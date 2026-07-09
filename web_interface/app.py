@@ -240,6 +240,11 @@ class ArduinoDevice:
 
 arduino: ArduinoDevice = ArduinoDevice()
 
+# Gamepad controller (Python-side, pygame.joystick)
+# 后台线程在树莓派上直接读手柄，与浏览器端手柄双轨并存
+from gamepad import GamepadController
+gamepad: GamepadController = GamepadController(arduino, app.config)
+
 
 ###############################################################
 #
@@ -740,6 +745,27 @@ def arduinoStatus():
     return jsonify({'status': 'Error', 'msg': 'Unable to read POST data'})
 
 
+# =============================================================
+@app.route('/gamepadStatus', methods=['POST', 'GET'])
+def gamepadStatus():
+    """
+    Return the Python-side gamepad connection status.
+    前端状态点轮询此路由，反映插在树莓派上的手柄状态
+    （与浏览器端 Gamepad API 双轨并存）。
+    """
+    if not session.get('active') and request.method == 'POST':
+        return redirect(url_for('login'))
+
+    global gamepad
+    info = gamepad.status()
+    return jsonify({
+        'status': 'OK',
+        'enabled': info['enabled'],
+        'active': info['active'],
+        'connected': info['connected'],
+    })
+
+
 
 ###############################################################
 #
@@ -748,10 +774,19 @@ def arduinoStatus():
 ###############################################################
 
 if __name__ == '__main__':
+    import atexit
+
+    # 启动手柄后台线程（若 GAMEPAD_AUTOSTART 且 GAMEPAD_ENABLED）
+    if app.config.get('GAMEPAD_ENABLED') and app.config.get('GAMEPAD_AUTOSTART'):
+        gamepad.start()
+
+    # 确保退出时清理手柄线程
+    atexit.register(gamepad.stop)
+
     # Debug mode
     if app.config['APP_DEBUG']:
         app.run(port=app.config['APP_PORT'], debug=app.config['APP_DEBUG'], host='0.0.0.0')
-    
+
     # Production mode
     else:
         serve(app, host='0.0.0.0', port=app.config['APP_PORT'])

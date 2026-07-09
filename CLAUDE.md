@@ -9,7 +9,7 @@ Wall-E 机器人复刻版的控制代码，由两部分组成：
 1. **Arduino 固件** (`wall-e/`)：控制电机与舵机，通过 USB 串口接收指令。
 2. **Raspberry Pi Web 服务器** (`web_interface/`)：基于 Flask 的 Web 控制界面，通过串口向 Arduino 下发指令，并可选地接入 Pi 摄像头进行 MJPEG 视频推流。
 
-硬件接线、舵机标定、电池检测等说明详见 `README.md`。
+硬件接线、舵机标定、电池检测等说明详见 `README.md`（另有中文版 `README.zh-CN.md`）。`docs/` 下有四份中文文档：`docs/SERIAL_PROTOCOL.md`（串口通信协议，见下方「串口指令协议」）、`docs/HARDWARE.md`（硬件采购清单）、`docs/VOICE_LLM_PLAN.md`（语音大模型接入方案）、`docs/REID_FOLLOW_PLAN.md`（视觉目标再识别/跟随方案，见下文「计划中」一节）。
 
 ## 常用命令
 
@@ -51,6 +51,7 @@ Web 端 `ArduinoDevice.send_command(cmd)` 把字符串 + `\n` 写入串口；Ard
 
 - Arduino 反向只发回 `Battery_<百分比>`，由 `ArduinoDevice.__parse_message()` 解析后供 `/arduinoStatus` 读取。
 - 舵机位置 `0..100` 在 Arduino 端通过 `preset[][2]`（`wall-e.ino` 约第 144 行，由 `wall-e_calibration` 标定得到）线性映射到实际 PWM 脉宽；`-1` 表示该次动作跳过该舵机。
+- 完整协议（含单字符调试指令全表、5 字符缓冲上限解析细节、`#define BAT_L` 启用条件）详见 `docs/SERIAL_PROTOCOL.md`。
 
 ### Web 服务器结构
 
@@ -58,16 +59,16 @@ Web 端 `ArduinoDevice.send_command(cmd)` 把字符串 + `\n` 写入串口；Ard
 - 视频推流由 `picamera2_stream.py` 独立实现：`PiCameraStreamer` 在**单独的 HTTP 服务器（端口 8080）**上提供 MJPEG 流，与 Flask 主服务（5000）分离。前端直接引用 8080 的流地址。
 - 前端：`templates/index.html` + `static/js/main.js`（摇杆/按键/手柄 → 调用上述路由），`static/js/blockly/` + `automation*.js` 实现浏览器内的 CodeBlocks 拖拽编程（电机功率/速度常量见 `config.py` 的 `CODEBLOCK_*`）。
 
-### 进行中的自主跟随 / 语音交互集成（重要）
+### 计划中但尚未实现的视觉跟随 / 语音交互（重要）
 
-`web_interface/` 下新增了四个模块，构成一条「感知 → 决策 → 控制」管线，**但目前尚未被 `app.py` 导入或调用，属于半成品集成工作**：
+⚠️ 仓库目前**只有** `app.py`、`config.py`、`picamera2_stream.py` 三个 Python 文件（外加 `static/`、`templates/`）。下述视觉/语音模块、对应配置段、`models/` 模型**都尚未提交进仓库**——它们只存在于 `docs/` 的设计文档里，属于计划中的工作，**不要去找这些文件，它们不存在**。落地实现以 `docs/VOICE_LLM_PLAN.md` 为准；其中规划的「感知 → 决策 → 控制」管线与接线契约（实现时参考）：
 
-- `vision_tracker.py` — `VisionTracker`：基于 MediaPipe Tasks（TFLite 模型 `models/face_detector.tflite`）做人脸检测，返回 `(x,y,w,h,offset_x,offset_y,area_ratio)`。模型路径在 `config.py` 的 `VISION_MODEL_PATH`，支持项目相对路径。
+- `vision_tracker.py` — `VisionTracker`：基于 MediaPipe Tasks（TFLite 模型 `models/face_detector.tflite`）做人脸检测，返回 `(x,y,w,h,offset_x,offset_y,area_ratio)`，模型路径走配置项 `VISION_MODEL_PATH`。
 - `robot_brain.py` — `RobotBrain`：状态机 `IDLE/FOLLOW/SEARCH/CHAT/AVOID`，按目标可见性、障碍距离、语音指令做状态转移。
 - `follow_controller.py` — `FollowController`：把视觉目标的 `offset_x` / `area_ratio` 转成 Arduino 的 `X`/`Y` 指令（-100..100），含死区、限幅、方向反转。
 - `voice_agent.py` — `VoiceAgent`：ASR（google 中文 / whisper）+ TTS（edge-tts，`zh-CN-XiaoxiaoNeural`，用 pygame 播放）+ 关键词指令解析（`follow/stop/greet`）。
 
-这些模块的配置已加入 `config.py` 的 `VISION_*` / `FOLLOW_*` / `VOICE_*` 段。接线时注意：`RobotBrain.update()` 期望 `target_result` 是 `VisionTracker.track()` 返回的 7 元组；最终 `FollowController.compute()` 的输出要经 `ArduinoDevice.send_command("X"..)` / `"Y"..` 下发。依赖（`mediapipe`、`speech_recognition`、`edge-tts`、`pygame`、`opencv-python`）未在 `raspi-setup.sh` 中安装，需另行 `pip install`。
+配置段 `VISION_*` / `FOLLOW_*` / `VOICE_*` / `LLM_*` 计划加在 `config.py`（沿用全大写键名 + 注释风格），API Key 写 `local_config.py`。接线契约：`RobotBrain.update()` 的 `target_result` 应为 `VisionTracker.track()` 的 7 元组；`FollowController.compute()` 的输出经 `ArduinoDevice.send_command("X"..)` / `"Y"..` 下发。依赖（`mediapipe`、`speech_recognition`、`edge-tts`、`pygame`、`opencv-python`，Phase 1 再加 `openai`、`openwakeword`、`sounddevice`、`numpy`）未在 `raspi-setup.sh` 中安装，需另行 `pip install`。`docs/HARDWARE.md` 给出了为这套功能选型的硬件（Pi Camera Module 3、USB/I2S 麦克风、VL53L1X 测距、MAX98357A 功放等）。
 
 ## 编辑约定
 

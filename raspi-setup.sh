@@ -21,6 +21,11 @@ sudo apt-get install -y python3-flask
 sudo apt-get install -y python3-picamera2
 sudo apt-get install -y python3-waitress
 
+# Grant gamepad access: pygame reads /dev/input/js0, which requires the
+# running user to be in the 'input' group. Takes effect after reboot/re-login.
+sudo usermod -aG input "$USERNAME"
+echo "Added user '$USERNAME' to 'input' group (reboot to take effect for gamepad)"
+
 # Modify the service file directory path
 echo " "
 echo "--------------------------------------------"
