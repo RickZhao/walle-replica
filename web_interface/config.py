@@ -26,3 +26,21 @@ CODEBLOCK_MOTORPOWER = 0.8   # Motorpower at which the speed below is reached
 CODEBLOCK_MOTORSPEED = 17    # this WALLE_E drives at 17 cm/s at given MOTORPOWER
 CODEBLOCK_TURNPOWER = 0.5    # Motorpower for the turn movement
 CODEBLOCK_TURNTIME = 1.8     # the time (s) it takes to move 90° at given TURNPOWER
+
+# ---------------------------------------------------------------
+# Gamepad (Python-side, pygame.joystick)
+#   后台线程在树莓派上直接读 /dev/input/js0，把状态转成与前端
+#   摇杆相同的串口指令下发，Arduino 端零改动。与浏览器端手柄
+#   (static/js/main.js) 双轨并存：手柄插在树莓派上走本模块，插在
+#   访问网页的设备上走浏览器端。两者都调 arduino.send_command，
+#   后发覆盖先发。
+#   headless 部署：pygame 用 SDL_VIDEODRIVER=dummy 初始化，不依赖桌面。
+#   权限：运行用户须在 input 组（raspi-setup.sh 已加 usermod -aG input）。
+# ---------------------------------------------------------------
+GAMEPAD_ENABLED = True                       # False = 不启动手柄后台线程
+GAMEPAD_AUTOSTART = True                     # True = app 启动时自动启动手柄线程
+GAMEPAD_POLL_INTERVAL = 0.02                  # 轮询事件间隔（秒），20ms 更跟手；仅值变化时才 send_command
+GAMEPAD_DEADZONE = 0.2                       # 摇杆死区，绝对值小于此值视为 0（中点发 X0/Y0 归零，防电机不释放）
+GAMEPAD_HEAD_MULTIPLIER = 5                  # 右摇杆 -> 头部旋转增量倍率（与 main.js headMultiplier 一致）
+GAMEPAD_NECK_MULTIPLIER = 5                  # 右摇杆 -> 颈部增量倍率（与 main.js 一致）
+GAMEPAD_ARMS_MULTIPLIER = 6                   # LT/RT -> 手臂增量倍率（与 main.js armsMultiplier 一致）

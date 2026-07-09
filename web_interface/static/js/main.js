@@ -966,6 +966,32 @@ $(document).ready(function () {
 
 	controllerOn();
 	if (joypad.instances[0] != null && joypad.instances[0].connected) updateInfo(joypad.instances[0]);
+
+	// Poll Python-side gamepad status (reads a gamepad plugged into the Raspberry Pi).
+	// Only takes over the indicator when the browser-side gamepad is NOT connected,
+	// so the two tracks coexist without conflict.
+	var gamepadPyTimer = setInterval(function() {
+		if (joypad.instances[0] != null && joypad.instances[0].connected) return; // browser-side wins
+		$.ajax({
+			url: "/gamepadStatus",
+			type: "GET",
+			dataType: "json",
+			success: function(data) {
+				if (data.status == "OK" && data.enabled) {
+					if (data.connected) {
+						$('#cont-area').attr('data-original-title','Connected (Pi)');
+						$('#cont-area').addClass('bg-success');
+						$('#cont-area').removeClass('bg-danger');
+						$('#cont-area').removeClass('d-none');
+					} else {
+						$('#cont-area').attr('data-original-title','Disconnected');
+						$('#cont-area').addClass('bg-danger');
+						$('#cont-area').removeClass('bg-success');
+					}
+				}
+			}
+		});
+	}, 1500);
 	
 	// This function runs when a number is inserted into the motor-offset
 	// input box, and ensures the number is valid.
