@@ -9,7 +9,7 @@ Wall-E 机器人复刻版的控制代码，由两部分组成：
 1. **Arduino 固件** (`wall-e/`)：控制电机与舵机，通过 USB 串口接收指令。
 2. **Raspberry Pi Web 服务器** (`web_interface/`)：基于 Flask 的 Web 控制界面，通过串口向 Arduino 下发指令，并可选地接入 Pi 摄像头进行 MJPEG 视频推流。
 
-硬件接线、舵机标定、电池检测等说明详见 `README.md`（另有中文版 `README.zh-CN.md`）。`docs/` 下有四份中文文档：`docs/SERIAL_PROTOCOL.md`（串口通信协议，见下方「串口指令协议」）、`docs/HARDWARE.md`（硬件采购清单）、`docs/VOICE_LLM_PLAN.md`（语音大模型接入方案）、`docs/REID_FOLLOW_PLAN.md`（视觉目标再识别/跟随方案，见下文「计划中」一节）。
+硬件接线、舵机标定、电池检测等说明详见 `README.md`（另有中文版 `README.zh-CN.md`）。`docs/` 下有五份中文文档：`docs/WIRING.md`（Arduino<->舵机板/电机板接线）、`docs/SERIAL_PROTOCOL.md`（串口通信协议，见下方「串口指令协议」）、`docs/HARDWARE.md`（硬件采购清单）、`docs/VOICE_LLM_PLAN.md`（语音大模型接入方案）、`docs/REID_FOLLOW_PLAN.md`（视觉目标再识别/跟随方案，见下文「计划中」一节）。
 
 ## 常用命令
 
