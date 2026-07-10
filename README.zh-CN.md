@@ -55,6 +55,8 @@ Web 界面使用 Python 编写，基于 *Flask* 搭建服务器。树莓派通�
 *机器人电子元件接线图*
 <br />
 
+> **使用 TB6612FNG 电机板**：上图默认对应 Arduino Motor Shield Rev2。若使用 TB6612FNG，请在 `wall-e.ino` 中取消注释 `#define MOTOR_DRIVER_TB6612FNG`，并用 D8/D9 作为第二路方向脚接 TB6612FNG 的 AIN2/BIN2，无需 74HC04 反相器。详细接线见 `docs/WIRING.md`。
+
 <br />
 
 #### [b] 测试主程序

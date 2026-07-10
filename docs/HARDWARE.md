@@ -11,7 +11,7 @@
 | 部件 | 推荐型号 | 等级 | 说明 |
 |------|----------|------|------|
 | 树莓派 | **Raspberry Pi 4B（4GB）** 或 **Pi 5（4GB）** | 必需 | 跑 Flask + 视觉 + 语音。Pi 4 跑 MediaPipe 人脸检测 15fps 勉强够，Pi 5 更从容。Pi Zero 2 W 跑持续视觉太吃力，不推荐 |
-| Arduino | **Arduino UNO R3** | 必需 | 代码用 UNO 引脚映射（PWM 3/11、方向 12/13、刹车 8/9），README 亦提到 UNO 内存警告 |
+| Arduino | **Arduino UNO R3** | 必需 | 代码用 UNO 引脚映射（PWM 3/11、方向 12/13，TB6612FNG 时 D8/D9 作为第二路方向脚），README 亦提到 UNO 内存警告 |
 | 通信线 | USB-A ↔ USB-B（UNO 方口线） | 必需 | Arduino ↔ Pi 数据通信 |
 
 ## 2. 驱动与执行
@@ -19,7 +19,7 @@
 | 部件 | 推荐型号 | 等级 | 说明 |
 |------|----------|------|------|
 | 舵机驱动板 | **Adafruit PCA9685** 16 路 PWM | 必需 | 代码用 `Adafruit_PWMServoDriver`，I2C 地址 0x40 |
-| 电机驱动 | **L298N** 双 H 桥，或 **TB6612FNG**（更省电） | 必需 | 代码用 DIR + PWM + BRAKE 三脚控制，两者均支持 |
+| 电机驱动 | **Arduino Motor Shield Rev2**（原设计），或 **TB6612FNG**（更省电），或 **L298N** | 必需 | 默认支持 Arduino Motor Shield Rev2（DIR + PWM + BRAKE）。TB6612FNG 需在 `wall-e.ino` 启用 `MOTOR_DRIVER_TB6612FNG`，用 D8/D9 作第二路方向脚，无需 74HC04。L298N 需单 DIR 反相接 IN2/IN4 |
 | 行走电机 | 12V 减速直流电机 ×2（约 200 RPM） | 必需 | 驱动左右履带 |
 | 头部/颈部舵机 | **MG90S 金属齿** ×3（头转、颈上、颈下） | 必需 | 承重大，用金属齿 |
 | 眼睛舵机 | **SG90** ×2 | 必需 | 轻载，微型即可 |

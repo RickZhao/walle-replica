@@ -15,8 +15,11 @@
 // MOTOR CONTROLLER CLASS
 class MotorController {
 public:
-	// Constructor
+	// Constructors
+	// Traditional: single DIR pin + brake pin (e.g. Arduino Motor Shield Rev2)
 	MotorController(uint8_t _dirPin, uint8_t _pwmPin, uint8_t _brkPin, bool _brkEnabled = true);
+	// Dual-direction: two complementary DIR pins, no brake pin (e.g. TB6612FNG)
+	MotorController(uint8_t _dirPin, uint8_t _dirPin2, uint8_t _pwmPin);
 	
 	// Functions
 	void setSpeed(int pwmValue);
@@ -25,24 +28,26 @@ public:
 	~MotorController();
 
 private:
-	uint8_t dirPin, pwmPin, brkPin;
-	bool reverse, brake, brakeEnabled;
+	uint8_t dirPin, dirPin2, pwmPin, brkPin;
+	bool reverse, brake, brakeEnabled, dualDir;
 };
 
 
 /**
- * Default Constructor
+ * Traditional Constructor (single DIR + brake)
  * 
  * @param  (_dirPin) Digital pin used for motor direction
- * @param  (_pwmPin) Digiral pin for PWM motor speed control
+ * @param  (_pwmPin) Digital pin for PWM motor speed control
  * @param  (_brkPin) Digital pin to enable/disable the breaks
  * @param  (_brkEnabled) Should the break be used?
  */
 MotorController::MotorController(uint8_t _dirPin, uint8_t _pwmPin, uint8_t _brkPin, bool _brkEnabled) {
 	dirPin = _dirPin;
+	dirPin2 = 255;
 	pwmPin = _pwmPin;
 	brkPin = _brkPin;
 	brakeEnabled = _brkEnabled;
+	dualDir = false;
 
 	pinMode(dirPin, OUTPUT);     // Motor Direction
 	pinMode(brkPin, OUTPUT);     // Motor Brake
@@ -56,6 +61,33 @@ MotorController::MotorController(uint8_t _dirPin, uint8_t _pwmPin, uint8_t _brkP
 		digitalWrite(brkPin, LOW);
 		brake = false;
 	}
+}
+
+
+/**
+ * Dual-Direction Constructor (two complementary DIR pins, no brake)
+ * 
+ * @param  (_dirPin)  Digital pin for direction 1
+ * @param  (_dirPin2) Digital pin for direction 2 (complementary)
+ * @param  (_pwmPin)  Digital pin for PWM motor speed control
+ * @note   For drivers like TB6612FNG that require IN1/IN2 logic levels.
+ */
+MotorController::MotorController(uint8_t _dirPin, uint8_t _dirPin2, uint8_t _pwmPin) {
+	dirPin = _dirPin;
+	dirPin2 = _dirPin2;
+	pwmPin = _pwmPin;
+	brkPin = 255;
+	brakeEnabled = false;
+	dualDir = true;
+
+	pinMode(dirPin, OUTPUT);
+	pinMode(dirPin2, OUTPUT);
+	// Initial state: forward
+	digitalWrite(dirPin, HIGH);
+	digitalWrite(dirPin2, LOW);
+
+	reverse = false;
+	brake = false;
 }
 
 
@@ -83,6 +115,7 @@ void MotorController::setSpeed(int pwmValue) {
 	// Forward direction
 	if (pwmValue > 0 && reverse) {
 		digitalWrite(dirPin, HIGH);
+		if (dualDir) digitalWrite(dirPin2, LOW);
 		reverse = false;
 
 		// Release the brake
@@ -94,6 +127,7 @@ void MotorController::setSpeed(int pwmValue) {
 	// Reverse direction
 	} else if (pwmValue < 0 && !reverse) {
 		digitalWrite(dirPin, LOW);
+		if (dualDir) digitalWrite(dirPin2, HIGH);
 		reverse = true;
 
 		// Release the brake
@@ -106,6 +140,12 @@ void MotorController::setSpeed(int pwmValue) {
 	} else if (brakeEnabled && !brake) {
 		digitalWrite(brkPin, HIGH);
 		brake = true;
+	}
+
+	// In dual-direction mode, pwmValue == 0 means brake (both direction pins HIGH)
+	if (dualDir && pwmValue == 0) {
+		digitalWrite(dirPin, HIGH);
+		digitalWrite(dirPin2, HIGH);
 	}
 	
 	// Send PWM value

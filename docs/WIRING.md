@@ -55,9 +55,18 @@ Arduino UNO R3 与舵机控制板、电机控制板的接线。**所有引脚以
 
 > 通道 7+ 未使用；`NUMBER_OF_SERVOS = 7`（`wall-e.ino:86`）。
 
-## 2. 电机控制板：三脚控制（DIR + PWM + BRAKE）
+## 2. 电机控制板
 
-`MotorController.hpp` 注释明确**为 Arduino Motor Shield Rev.2 设计**，每个电机用 3 个引脚。引脚定义见 `wall-e.ino:32-38`：
+`MotorController.hpp` 默认支持两种工作模式，通过 `wall-e.ino` 顶部的宏选择：
+
+```cpp
+#define MOTOR_DRIVER_TB6612FNG       // 双方向脚驱动（TB6612FNG）
+// #define MOTOR_DRIVER_ARDUINO_SHIELD // 原设计 Arduino Motor Shield Rev2
+```
+
+### 2.1 Arduino Motor Shield Rev2（原设计，单 DIR + PWM + BRAKE）
+
+每个电机用 3 个引脚。引脚定义见 `wall-e.ino`：
 
 | 功能 | 左电机 | 右电机 | 作用 |
 |------|--------|--------|------|
@@ -65,17 +74,53 @@ Arduino UNO R3 与舵机控制板、电机控制板的接线。**所有引脚以
 | **PWM**（速度） | **D3** | **D11** | `analogWrite`，0-255 |
 | **BRAKE**（刹车） | **D9** | **D8** | HIGH 刹车，LOW 释放 |
 
-`setSpeed()` 逻辑（`MotorController.hpp:77-113`）：PWM>0 正转、<0 反转、=0 刹车；改变方向时先释放刹车，再设方向，最后出 PWM。
+`setSpeed()` 逻辑：PWM>0 正转、<0 反转、=0 刹车；改变方向时先释放刹车，再设方向，最后出 PWM。
 
-### 不同电机板的接法
+### 2.2 TB6612FNG（双 DIR 脚模式）
 
-| 电机板 | DIR 脚 | PWM 脚 | BRAKE 脚处理 |
-|--------|--------|--------|-------------|
-| **Arduino Motor Shield Rev2**（原设计） | 12/13 | 3/11 | 9/8 直接用 |
-| **L298N** | IN1(左)/IN3(右) | ENA/ENB | BRAKE 接 EN 使能脚（HIGH=使能=不刹）；或悬空不用刹车 |
-| **TB6612FNG** | AIN1/BIN1 | PWMA/PWMB | 接 STBY，或不用 |
+TB6612FNG 每路电机需要两个互补的方向输入（`AIN1/AIN2`、`BIN1/BIN2`）。代码已经支持用 Arduino 直接输出这两路互补信号，**无需 74HC04 反相器**。
 
-> ⚠️ L298N 方向通常用 IN1+IN2 两脚组合，而代码只用单 DIR 脚。适配时把 IN2 接 DIR 反相（或用非门），或改代码为两脚方向。**最省事是用 Motor Shield Rev2，引脚完全对应。**
+接线前，确保 `wall-e.ino` 中取消注释：
+
+```cpp
+#define MOTOR_DRIVER_TB6612FNG
+```
+
+#### 引脚分配
+
+| 功能 | 左电机 | 右电机 | 接 TB6612FNG |
+|------|--------|--------|-------------|
+| **DIR1** | **D12** | **D13** | AIN1 / BIN1 |
+| **DIR2**（互补） | **D9** | **D8** | AIN2 / BIN2 |
+| **PWM** | **D3** | **D11** | PWMA / PWMB |
+
+#### 完整接线表
+
+| Arduino UNO | TB6612FNG | 说明 |
+|-------------|-----------|------|
+| D12 | AIN1 | 左电机方向 1 |
+| D9 | AIN2 | 左电机方向 2（互补） |
+| D3 | PWMA | 左电机 PWM |
+| D13 | BIN1 | 右电机方向 1 |
+| D8 | BIN2 | 右电机方向 2（互补） |
+| D11 | PWMB | 右电机 PWM |
+| 5V | VCC | 逻辑电源 |
+| 12V | VM | 电机动力（3S LiPo） |
+| GND | GND | 与 Arduino、buck、电池负极共地 |
+
+> **STBY 说明**：市面上很多 TB6612FNG 模块已经把 `STBY` 内部接到 `VCC`，板上只标 `VCC`。直接把 5V 接到 `VCC` 即可。如果你的模块有独立 `STBY` 引脚，请把它也接到 5V。
+
+> 电机方向若反了，对调该侧电机的两根输出线即可。
+
+### 2.3 不同电机板的接法速查
+
+| 电机板 | DIR 脚 | PWM 脚 | 其他处理 |
+|--------|--------|--------|---------|
+| **Arduino Motor Shield Rev2** | 12/13 | 3/11 | BRAKE 9/8 直接用；选择 `MOTOR_DRIVER_ARDUINO_SHIELD` |
+| **L298N** | IN1(左)/IN3(右) | ENA/ENB | IN2/IN4 接 DIR 反相（或用非门）；BRAKE 接 EN 使能脚或悬空 |
+| **TB6612FNG** | AIN1/BIN1 (12/13) | PWMA/PWMB (3/11) | AIN2/BIN2 接 D9/D8；选择 `MOTOR_DRIVER_TB6612FNG` |
+
+> ⚠️ 最省事、引脚完全对应的是 **Arduino Motor Shield Rev2**；TB6612FNG 性价比更高，但需要在代码里切换到双方向脚模式。
 
 ## 3. 电源（关键，接错烧板）
 
@@ -188,6 +233,8 @@ PCA9685 的信号（SDA/SCL/OE）是 Arduino 发的电压，电压必须有参�
 
 ## 6. 接线速查（最小系统）
 
+### 6.1 Arduino Motor Shield Rev2
+
 ```
 Arduino UNO R3
   A4  ──── PCA9685 SDA
@@ -200,6 +247,25 @@ Arduino UNO R3
   D9  ──── 电机板 左 BRAKE
   D8  ──── 电机板 右 BRAKE
   GND ──── 所有板共地
+  (PCA9685 V+ 接外部 5V buck，不接 Arduino)
+```
+
+### 6.2 TB6612FNG
+
+```
+Arduino UNO R3
+  A4  ──── PCA9685 SDA
+  A5  ──── PCA9685 SCL
+  D10 ──── PCA9685 OE
+  D12 ──── TB6612 AIN1
+  D9  ──── TB6612 AIN2
+  D3  ──── TB6612 PWMA
+  D13 ──── TB6612 BIN1
+  D8  ──── TB6612 BIN2
+  D11 ──── TB6612 PWMB
+  5V  ──── TB6612 VCC
+  12V ──── TB6612 VM
+  GND ──── TB6612 GND + PCA9685 GND + buck GND（共地）
   (PCA9685 V+ 接外部 5V buck，不接 Arduino)
 ```
 

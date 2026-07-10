@@ -29,13 +29,23 @@
 
 /// Define pin-mapping
 // -- -- -- -- -- -- -- -- -- -- -- -- -- --
-#define DIRECTION_L_PIN 12           // Motor direction pins
+// Uncomment one of the following lines to select your motor driver:
+#define MOTOR_DRIVER_TB6612FNG       // Dual-direction-pin driver (TB6612FNG)
+// #define MOTOR_DRIVER_ARDUINO_SHIELD // Original Arduino Motor Shield Rev2
+
+#define DIRECTION_L_PIN 12           // Motor direction pins (DIR1 for TB6612FNG / DIR for Shield)
 #define DIRECTION_R_PIN 13
 #define PWM_SPEED_L_PIN  3           // Motor PWM pins
 #define PWM_SPEED_R_PIN 11
-#define BRAKE_L_PIN  9               // Motor brake pins
-#define BRAKE_R_PIN  8
 #define SERVO_ENABLE_PIN 10          // Servo shield output enable pin
+
+#ifdef MOTOR_DRIVER_TB6612FNG
+	#define DIRECTION_L_PIN2 9       // Second complementary direction pin (DIR2 for TB6612FNG)
+	#define DIRECTION_R_PIN2 8
+#else
+	#define BRAKE_L_PIN  9           // Motor brake pins (Arduino Motor Shield Rev2 only)
+	#define BRAKE_R_PIN  8
+#endif
 
 
 /**
@@ -98,8 +108,13 @@
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 // Set up motor controller classes
-MotorController motorL(DIRECTION_L_PIN, PWM_SPEED_L_PIN, BRAKE_L_PIN, false);
-MotorController motorR(DIRECTION_R_PIN, PWM_SPEED_R_PIN, BRAKE_R_PIN, false);
+#ifdef MOTOR_DRIVER_TB6612FNG
+	MotorController motorL(DIRECTION_L_PIN, DIRECTION_L_PIN2, PWM_SPEED_L_PIN);
+	MotorController motorR(DIRECTION_R_PIN, DIRECTION_R_PIN2, PWM_SPEED_R_PIN);
+#else
+	MotorController motorL(DIRECTION_L_PIN, PWM_SPEED_L_PIN, BRAKE_L_PIN, false);
+	MotorController motorR(DIRECTION_R_PIN, PWM_SPEED_R_PIN, BRAKE_R_PIN, false);
+#endif
 
 // Queue for animations - buffer is defined outside of the queue class
 // so that the compiler knows how much dynamic memory will be used
