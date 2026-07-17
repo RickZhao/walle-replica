@@ -17,7 +17,7 @@ class MotorController {
 public:
 	// Constructors
 	// Traditional: single DIR pin + brake pin (e.g. Arduino Motor Shield Rev2)
-	MotorController(uint8_t _dirPin, uint8_t _pwmPin, uint8_t _brkPin, bool _brkEnabled = true);
+	MotorController(uint8_t _dirPin, uint8_t _pwmPin, uint8_t _brkPin, bool _brkEnabled);
 	// Dual-direction: two complementary DIR pins, no brake pin (e.g. TB6612FNG)
 	MotorController(uint8_t _dirPin, uint8_t _dirPin2, uint8_t _pwmPin);
 	
