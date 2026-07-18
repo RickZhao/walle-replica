@@ -45,6 +45,8 @@ Web 路由调 `arduino.send_command("前缀" + str(值))`。
 | `U` | 0..100 | 右眼（-> `setpos[3]`） | `wall-e.ino:311` | `/servoControl` |
 | `L` | 0..100 | 左臂（-> `setpos[5]`） | `wall-e.ino:287` | `/servoControl` |
 | `R` | 0..100 | 右臂（-> `setpos[6]`） | `wall-e.ino:291` | `/servoControl` |
+| `I` | 0..100 | 左眉毛（-> `setpos[7]`） | `wall-e.ino:332` | `/servoControl` |
+| `J` | 0..100 | 右眉毛（-> `setpos[8]`） | `wall-e.ino:336` | `/servoControl` |
 
 ## Web -> Arduino：单字符指令
 
@@ -85,15 +87,15 @@ Battery_<百分比>
 
 ## 舵机位置映射（0..100 -> 实际 PWM）
 
-舵机指令（`G/T/B/E/U/L/R`）的 `0..100` 是归一化位置，不是 PWM。Arduino 端按 `preset[][2]`（`wall-e.ino:144`，由 `wall-e_calibration/wall-e_calibration.ino` 标定得到）线性映射：
+舵机指令（`G/T/B/E/U/L/R/I/J`）的 `0..100` 是归一化位置，不是 PWM。Arduino 端按 `preset[][2]`（`wall-e.ino:159`，由 `wall-e_calibration/wall-e_calibration.ino` 标定得到）线性映射：
 
 ```
 setpos[i] = int( number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0] )
 ```
 
 - `0` -> `preset[i][0]`（LOW 端），`100` -> `preset[i][1]`（HIGH 端）。
-- `-1` 表示**该次动作跳过该舵机**（仅用于 `animations.ino` 的 `queue.push({time, head, necT, necB, eyeR, eyeL, armL, armR})` 数组里，不适用于实时指令）。
-- 关节-下标对应（`wall-e.ino:157` 注释）：
+- `-1` 表示**该次动作跳过该舵机**（仅用于 `animations.ino` 的 `queue.push({time, head, necT, necB, eyeR, eyeL, armL, armR, broL, broR})` 数组里，不适用于实时指令）。
+- 关节-下标对应（`wall-e.ino:159` 注释）：
 
 | 下标 | 关节 |
 |------|------|
@@ -104,6 +106,8 @@ setpos[i] = int( number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0] )
 | 4 | eyeL 左眼 |
 | 5 | armL 左臂 |
 | 6 | armR 右臂 |
+| 7 | broL 左眉毛 |
+| 8 | broR 右眉毛 |
 
 ## 接线契约（最重要）
 
@@ -114,7 +118,7 @@ setpos[i] = int( number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0] )
 3. 前端 `static/js/main.js` 加调用该路由的交互（按钮/摇杆/滑杆）
 
 且指令前缀**避开已用的**：
-- 带数字：`X Y S O M A G T B E U L R`
+- 带数字：`X Y S O M A G T B E U L R I J`
 - 单字符：`w a s d q j l i k f g h b n m`
 
 全部已占用，新指令须另选字母。

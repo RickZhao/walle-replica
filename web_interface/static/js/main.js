@@ -467,6 +467,8 @@ function servoInputs(enabled) {
 		$('#neck-bottom').prop('disabled', false);
 		$('#eye-left').prop('disabled', false);
 		$('#eye-right').prop('disabled', false);
+		$('#eyebrow-left').prop('disabled', false);
+		$('#eyebrow-right').prop('disabled', false);
 		$('#arm-left').prop('disabled', false);
 		$('#arm-right').prop('disabled', false);
 		$('#head-up').removeClass('disabled');
@@ -485,6 +487,8 @@ function servoInputs(enabled) {
 		$('#neck-bottom').prop('disabled',true);
 		$('#eye-left').prop('disabled',true);
 		$('#eye-right').prop('disabled',true);
+		$('#eyebrow-left').prop('disabled',true);
+		$('#eyebrow-right').prop('disabled',true);
 		$('#arm-left').prop('disabled',true);
 		$('#arm-right').prop('disabled',true);
 		$('#head-up').addClass('disabled');

@@ -26,7 +26,7 @@
  *       to move in increments of 1.
  *    b. Once the head is in the LOW position, send the 'n' character to confirm
  *       the position and move on to the HIGH position. Repeat the process.
- *    d. The process will then repeat itself for each of the 7 servos, getting
+ *    d. The process will then repeat itself for each of the 9 servos, getting
  *       you to specify the LOW and HIGH positions.
  * 4. Once the process is complete, the calibrated positions will be output to
  *    the serial monitor; for example:
@@ -38,9 +38,11 @@
  *                        {475, 230},  // eye right
  *                        {270, 440},  // eye left
  *                        {350, 185},  // arm left
- *                        {188, 360}}; // arm right
+ *                        {188, 360},  // arm right
+ *                        {150, 600},  // eyebrow left
+ *                        {150, 600}}; // eyebrow right
  *
- *    Copy the array and paste it into lines 144 to 150 in [wall-e.ino]
+ *    Copy the array and paste it into lines 159 to 167 in [wall-e.ino]
  */
 
 #include <Wire.h>
@@ -54,7 +56,7 @@
 
 // Define other constants
 // -- -- -- -- -- -- -- -- -- -- -- -- -- --
-#define SERVOS 7           // Number of servo motors
+#define SERVOS 9           // Number of servo motors
 
 
 // Instantiate objects
@@ -70,20 +72,24 @@ int preset[][2] =  {{398, 112},  // head rotation
                     {475, 230},	 // eye right
                     {270, 440},	 // eye left
                     {350, 185},	 // arm left
-                    {188, 360}}; // arm right
+                    {188, 360},	 // arm right
+                    {150, 600},	 // eyebrow left
+                    {150, 600}}; // eyebrow right
 
 // Rest position
-float restpos[7] = {50, 50, 40, 0, 0, 100, 100};
+float restpos[9] = {50, 50, 40, 0, 0, 100, 100, 50, 50};
 
 // Messages
-String messages1[7] = {"Head Rotation - ","Neck Top Joint - ","Neck Bottom Joint - ","Eye Right - ","Eye Left - ","Arm Left - ","Arm Right - "};
+String messages1[9] = {"Head Rotation - ","Neck Top Joint - ","Neck Bottom Joint - ","Eye Right - ","Eye Left - ","Arm Left - ","Arm Right - ","Eyebrow Left - ","Eyebrow Right - "};
 String messages2[][2] = {{"LOW (head facing left)", "HIGH (head facing right)"},
                         {"LOW (head looking up)", "HIGH (head looking down)"},
                         {"LOW (head looking down)", "HIGH (head looking up)"},
                         {"LOW (eye rotated down)", "HIGH (eye rotated up)"},
                         {"LOW (eye rotated down)", "HIGH (eye rotated up)"},
                         {"LOW (arm rotated down)", "HIGH (arm rotated up)"},
-                        {"LOW (arm rotated down)", "HIGH (arm rotated up)"}};
+                        {"LOW (arm rotated down)", "HIGH (arm rotated up)"},
+                        {"LOW (eyebrow lowered)", "HIGH (eyebrow raised)"},
+                        {"LOW (eyebrow lowered)", "HIGH (eyebrow raised)"}};
 
 // Runtime Variables
 int currentServo = 0;
@@ -202,7 +208,9 @@ void outputResults() {
 	Serial.print("                    {"); Serial.print(preset[3][0]); Serial.print(","); Serial.print(preset[3][1]); Serial.println("},  // eye right");
 	Serial.print("                    {"); Serial.print(preset[4][0]); Serial.print(","); Serial.print(preset[4][1]); Serial.println("},  // eye left");
 	Serial.print("                    {"); Serial.print(preset[5][0]); Serial.print(","); Serial.print(preset[5][1]); Serial.println("},  // arm left");
-	Serial.print("                    {"); Serial.print(preset[6][0]); Serial.print(","); Serial.print(preset[6][1]); Serial.println("}}; // arm right");
+	Serial.print("                    {"); Serial.print(preset[6][0]); Serial.print(","); Serial.print(preset[6][1]); Serial.println("},  // arm right");
+	Serial.print("                    {"); Serial.print(preset[7][0]); Serial.print(","); Serial.print(preset[7][1]); Serial.println("},  // eyebrow left");
+	Serial.print("                    {"); Serial.print(preset[8][0]); Serial.print(","); Serial.print(preset[8][1]); Serial.println("}}; // eyebrow right");
 
 	// Stop the program
 	while(1){}

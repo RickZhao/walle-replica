@@ -22,7 +22,7 @@ walle-replica/
 │   ├── Queue.hpp                # 环形缓冲区/队列模板
 │   └── display.ino              # 可选 OLED 电量显示（需启用 #define OLED）
 ├── wall-e_calibration/          # 舵机标定 sketch
-│   └── wall-e_calibration.ino   # 交互式标定 7 个舵机 LOW/HIGH PWM，输出 preset 数组
+│   └── wall-e_calibration.ino   # 交互式标定 9 个舵机 LOW/HIGH PWM，输出 preset 数组
 ├── web_interface/               # 树莓派 Web 控制端
 │   ├── app.py                   # Flask 单体入口：路由 + ArduinoDevice 串口线程
 │   ├── config.py                # 全局配置（全大写键名）
@@ -74,7 +74,7 @@ walle-replica/
 ### 4.1 Arduino 固件
 1. 在 Arduino IDE 安装 `Adafruit_PWMServoDriver` 库。
 2. 打开 `wall-e/wall-e.ino`，`animations.ino`、`MotorController.hpp`、`Queue.hpp` 会在同一窗口自动打开。
-3. 根据 `wall-e_calibration/wall-e_calibration.ino` 标定得到 `preset[][2]` 数组，贴回 `wall-e.ino` 第 144–150 行。
+3. 根据 `wall-e_calibration/wall-e_calibration.ino` 标定得到 `preset[][2]` 数组，贴回 `wall-e.ino` 第 159–167 行。
 4. 选择正确的 Board / Port，上传。
 5. 串口监视器波特率设为 **115200**。
 
@@ -143,6 +143,7 @@ dmesg | grep tty
 | `G/T/B` | 0..100 | 头部旋转 / 颈上 / 颈下 | `/servoControl` |
 | `E/U` | 0..100 | 左眼 / 右眼 | `/servoControl` |
 | `L/R` | 0..100 | 左臂 / 右臂 | `/servoControl` |
+| `I/J` | 0..100 | 左眉毛 / 右眉毛 | `/servoControl` |
 
 ### 6.2 调试单字符指令（仅 Arduino 串口监视器）
 
@@ -154,13 +155,13 @@ dmesg | grep tty
 
 ### 6.4 舵机位置映射
 
-`0..100` 是归一化位置，不是 PWM。Arduino 按 `preset[][2]`（`wall-e.ino:144`）线性映射：
+`0..100` 是归一化位置，不是 PWM。Arduino 按 `preset[][2]`（`wall-e.ino:159`）线性映射：
 
 ```cpp
 setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 ```
 
-下标含义：`0=head`、`1=necT`、`2=necB`、`3=eyeR`、`4=eyeL`、`5=armL`、`6=armR`。
+下标含义：`0=head`、`1=necT`、`2=necB`、`3=eyeR`、`4=eyeL`、`5=armL`、`6=armR`、`7=broL`、`8=broR`。
 
 ### 6.5 新增指令的约定
 

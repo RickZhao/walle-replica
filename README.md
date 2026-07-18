@@ -55,6 +55,9 @@ The web interface is programmed in Python and uses *Flask* to generate a server.
 *Diagram showing the wiring of the robot's electronic components*
 <br />
 
+> **New: Modular Backplane PCB** — A complete KiCad 10 backplane design is available in `hardware/walle-shield/`. It replaces the mess of dupont wires with a single 140×100 mm 2-layer board: solder the pin sockets/terminals/switch/fuse/resistors, then plug in the Arduino, TB6612FNG module, PCA9685 module and buck converter. Gerbers, drill files and BOM are already exported. See `hardware/walle-shield/README.md` for details.
+<br />
+
 <br />
 
 #### [b] Testing the Main Program

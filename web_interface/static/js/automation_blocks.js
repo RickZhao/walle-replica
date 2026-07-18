@@ -76,6 +76,14 @@ Blockly.defineBlocksWithJsonArray([
           [
             "Eye Right",
             "U"
+          ],
+          [
+            "Eyebrow Left",
+            "I"
+          ],
+          [
+            "Eyebrow Right",
+            "J"
           ]
         ]
       },

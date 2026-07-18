@@ -14,7 +14,7 @@
  *    a. In the Arduino IDE, go to Sketch->Include Library->Manage Libraries
  *    b. Search for Adafruit PWM Library, and install the latest version
  * 2. Calibrate the servo motors, using the calibration sketch provided in the
- *    GitHub repository. Paste the calibrated values between lines 144 to 150.
+ *    GitHub repository. Paste the calibrated values between lines 159 to 167.
  * 3. Upload the sketch to the micro-controller, and open the serial monitor 
  *    at a baud rate of 115200.
  * 4. Additional instructions and hints can be found at:
@@ -93,7 +93,7 @@
 
 /// Define other constants
 // -- -- -- -- -- -- -- -- -- -- -- -- -- --
-#define NUMBER_OF_SERVOS 7        // Number of servo motors
+#define NUMBER_OF_SERVOS 9        // Number of servo motors
 #define SERVO_UPDATE_TIME 10      // Time in milliseconds of how often to update servo and motor positions
 #define SERVO_OFF_TIME 6000       // Turn servo motors off after 6 seconds
 #define STATUS_CHECK_TIME 10000   // Time in milliseconds of how often to check robot status (eg. battery level)
@@ -162,19 +162,21 @@ int preset[][2] =  {{410,120},  // head rotation
                     {465,271},  // eye right
                     {278,479},  // eye left
                     {340,135},  // arm left
-                    {150,360}}; // arm right
+                    {150,360},  // arm right
+                    {150,600},  // eyebrow left  (placeholder - run calibration sketch)
+                    {150,600}}; // eyebrow right (placeholder - run calibration sketch)
 // *****************************************************
 
 
 // Servo Control - Position, Velocity, Acceleration
 // -- -- -- -- -- -- -- -- -- -- -- -- -- --
-// Servo Pins:	     0,   1,   2,   3,   4,   5,   6,   -,   -
-// Joint Name:	  head,necT,necB,eyeR,eyeL,armL,armR,motL,motR
-float curpos[] = { 248, 560, 140, 475, 270, 250, 290, 180, 180};  // Current position (units)
-float setpos[] = { 248, 560, 140, 475, 270, 250, 290,   0,   0};  // Required position (units)
-float curvel[] = {   0,   0,   0,   0,   0,   0,   0,   0,   0};  // Current velocity (units/sec)
-float maxvel[] = { 500, 400, 500,2400,2400, 600, 600, 255, 255};  // Max Servo velocity (units/sec)
-float accell[] = { 350, 300, 480,1800,1800, 500, 500, 800, 800};  // Servo acceleration (units/sec^2)
+// Servo Pins:	     0,   1,   2,   3,   4,   5,   6,   7,   8,   -,   -
+// Joint Name:	  head,necT,necB,eyeR,eyeL,armL,armR,broL,broR,motL,motR
+float curpos[] = { 248, 560, 140, 475, 270, 250, 290, 375, 375, 180, 180};  // Current position (units)
+float setpos[] = { 248, 560, 140, 475, 270, 250, 290, 375, 375,   0,   0};  // Required position (units)
+float curvel[] = {   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0};  // Current velocity (units/sec)
+float maxvel[] = { 500, 400, 500,2400,2400, 600, 600,1200,1200, 255, 255};  // Max Servo velocity (units/sec)
+float accell[] = { 350, 300, 480,1800,1800, 500, 500, 900, 900, 800, 800};  // Servo acceleration (units/sec^2)
 
 
 
@@ -327,6 +329,14 @@ void evaluateSerial() {
 		autoMode = false;
 		queue.clear();
 		setpos[3] = int(number * 0.01 * (preset[3][1] - preset[3][0]) + preset[3][0]);
+	} else if (firstChar == 'I' && number >= 0 && number <= 100) { // Move eyebrow left
+		autoMode = false;
+		queue.clear();
+		setpos[7] = int(number * 0.01 * (preset[7][1] - preset[7][0]) + preset[7][0]);
+	} else if (firstChar == 'J' && number >= 0 && number <= 100) { // Move eyebrow right
+		autoMode = false;
+		queue.clear();
+		setpos[8] = int(number * 0.01 * (preset[8][1] - preset[8][0]) + preset[8][0]);
 	}
 	
 

@@ -12,3 +12,16 @@ __pycache__/wsgi.cpython-311.pyc
 
 # macOS Finder metadata
 .DS_Store
+
+# KiCad generated/temporary files
+*.kicad_prl
+*.kicad_pro.lck
+~*.lck
+*-backups/
+.history/
+_autosave-*
+*.tmp
+*~
+
+# Kimi Code local project config
+.kimi-code/

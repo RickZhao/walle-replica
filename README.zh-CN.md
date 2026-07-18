@@ -57,6 +57,8 @@ Web 界面使用 Python 编写，基于 *Flask* 搭建服务器。树莓派通�
 
 > **使用 TB6612FNG 电机板**：上图默认对应 Arduino Motor Shield Rev2。若使用 TB6612FNG，请在 `wall-e.ino` 中取消注释 `#define MOTOR_DRIVER_TB6612FNG`，并用 D8/D9 作为第二路方向脚接 TB6612FNG 的 AIN2/BIN2，无需 74HC04 反相器。详细接线见 `docs/WIRING.md`。
 
+> **新增：模块化底板 PCB** — 仓库现在提供完整的 KiCad 10 底板设计：`hardware/walle-shield/`。用一块 140×100 mm 的双层板替代大量杜邦线，只需焊接排母、端子、开关、保险丝和几颗电阻，然后把 Arduino、TB6612FNG 模块、PCA9685 模块、降压模块直接插上即可。Gerber、钻孔文件、BOM 已导出。详见 `hardware/walle-shield/README.md`。
+
 <br />
 
 #### [b] 测试主程序

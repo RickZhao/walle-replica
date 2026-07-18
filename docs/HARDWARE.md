@@ -13,6 +13,7 @@
 | 树莓派 | **Raspberry Pi 4B（4GB）** 或 **Pi 5（4GB）** | 必需 | 跑 Flask + 视觉 + 语音。Pi 4 跑 MediaPipe 人脸检测 15fps 勉强够，Pi 5 更从容。Pi Zero 2 W 跑持续视觉太吃力，不推荐 |
 | Arduino | **Arduino UNO R3** | 必需 | 代码用 UNO 引脚映射（PWM 3/11、方向 12/13，TB6612FNG 时 D8/D9 作为第二路方向脚），README 亦提到 UNO 内存警告 |
 | 通信线 | USB-A ↔ USB-B（UNO 方口线） | 必需 | Arduino ↔ Pi 数据通信 |
+| **模块化底板 PCB** | `hardware/walle-shield/` 生成的 140×100 mm 2 层板 | **强烈推荐** | 替代杜邦线；底板只焊直插器件，Arduino/电机板/舵机板/降压模块直接插。见 `hardware/walle-shield/README.md` |
 
 ## 2. 驱动与执行
 
@@ -34,7 +35,9 @@
 | 电池 | **3S LiPo 11.1V**（满电 12.6V，≥2200mAh） | 必需 | `BATTERY_MAX_VOLTAGE = 12.6` 即 3S |
 | 降压模块 | 12V→5V **DC-DC Buck，≥5A** | 必需 | 给 Pi 供电（Pi 4 要 3A，Pi 5 要 5A） |
 | 分压电阻 | R1 = 100kΩ、R2 = 47kΩ | 可选 | 电池检测。`DIVIDER_SCALING_FACTOR = 0.3197` 即此值 |
-| 电源开关 | XT60 接头 + 拨动开关 | 必需 | 总电源通断 |
+| 电源开关 | 自锁船型开关（KCD1 等） | 必需 | 总电源通断；底板预留 `SW1` 焊盘 |
+| 保险丝座 | 5×20 mm 直插保险丝座 | 推荐 | 底板 `F1`，建议配 10 A 保险丝 |
+| 接线端子 | 5.08 mm 间距 2P 直插端子 | 必需（用底板时） | 底板 `J6/J4/J5/J17/J7/J8` 等 |
 
 ## 4. 视觉跟随（新功能，正在集成）
 
@@ -86,12 +89,22 @@
 |------|----------|------|------|
 | OLED | **SH1106 1.3" 128×64 I2C** | 可选 | `#define OLED` 默认构造就是它，显示电量 |
 
-## 7. 算力升级（仅当视觉/语音吃力时）
+## 7. 底板专属物料（如果用 `hardware/walle-shield/`）
+
+| 部件 | 推荐型号 | 数量 | 说明 |
+|------|----------|------|------|
+| PCB | 140×100 mm，2 层，1.6 mm | 1 | Gerber 在 `hardware/walle-shield/gerber/` |
+| Arduino 排母 | 1×10 + 1×8 直插排母 | 各 1 | 固定 Arduino UNO R3 |
+| 模块排母 | 2.54 mm 直插排母 | 若干 | `J2/J2M/J3/J3PWM/J16` 及 7 路舵机接口 |
+| 电源指示灯 | 3 mm LED（红/绿）+ 1 kΩ 限流电阻 | 各 1 | 底板 `D1`/`R3` |
+| 安装铜柱 | M3×10 mm 铜柱 + M3 螺丝 | 4 套 | 固定底板 |
+
+## 8. 算力升级（仅当视觉/语音吃力时）
 
 - **首选**：直接上 **Pi 5**，比加加速棒省心。
 - **Google Coral USB Accelerator（Edge TPU）**：⚠️ 仓库自带的 `models/face_detector.tflite` **不是 Edge-TPU 编译版**，直接插 Coral 不会加速。要用 Coral 须自行用 `edgetpu_compiler` 重新编译模型，否则白买。除非愿意折腾编译，否则不建议。
 
-## 8. 结构
+## 9. 结构
 
 - 3D 打印件来自 [wired.chillibasket.com/3d-printed-wall-e](https://wired.chillibasket.com/3d-printed-wall-e/)（原作者图纸，与舵机位、电机位完全匹配，建议直接用）。
 
@@ -99,7 +112,7 @@
 
 ## 一句话采购建议
 
-基础版照第 1–3 节；要把仓库里那套半成品的视觉/语音跑起来，再加 **Pi Camera Module 3 + USB 麦克风 + 小扬声器 + VL53L1X**，主控选 Pi 4B/5 即可，暂时不用上 Coral。
+基础版照第 1–3 节；想省掉杜邦线再加第 7 节底板物料；要把仓库里那套半成品的视觉/语音跑起来，再加 **Pi Camera Module 3 + USB 麦克风 + 小扬声器 + VL53L1X**，主控选 Pi 4B/5 即可，暂时不用上 Coral。
 
 ## 接线与代码接入提示
 

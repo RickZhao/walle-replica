@@ -105,12 +105,34 @@ MotorController::~MotorController() {
  * @param  (pwmValue) The PWM value of the new speed
  * @note   Negative PWM values will cause the motor to move in reverse
  * @note   A PWM value of 0 will enable the breaks
+ * @note   In dual-direction mode (TB6612FNG) both direction pins are
+ *         rewritten on every update: the brake state (both pins HIGH)
+ *         would otherwise latch after a stop, since the single-DIR
+ *         logic below only rewrites the pins when the direction
+ *         changes, leaving the motor braked forever.
  */
 void MotorController::setSpeed(int pwmValue) {
 
 	// Bound the PWM value to +-255
 	if (pwmValue > 255) pwmValue = 255;
 	else if (pwmValue < -255) pwmValue = -255;
+
+	// Dual-direction mode (TB6612FNG): set both direction pins explicitly
+	if (dualDir) {
+		if (pwmValue > 0) {
+			digitalWrite(dirPin, HIGH);
+			digitalWrite(dirPin2, LOW);
+		} else if (pwmValue < 0) {
+			digitalWrite(dirPin, LOW);
+			digitalWrite(dirPin2, HIGH);
+		} else {
+			// No movement: engage the short brake
+			digitalWrite(dirPin, HIGH);
+			digitalWrite(dirPin2, HIGH);
+		}
+		analogWrite(pwmPin, abs(pwmValue));
+		return;
+	}
 	
 	// Forward direction
 	if (pwmValue > 0 && reverse) {
@@ -140,12 +162,6 @@ void MotorController::setSpeed(int pwmValue) {
 	} else if (brakeEnabled && !brake) {
 		digitalWrite(brkPin, HIGH);
 		brake = true;
-	}
-
-	// In dual-direction mode, pwmValue == 0 means brake (both direction pins HIGH)
-	if (dualDir && pwmValue == 0) {
-		digitalWrite(dirPin, HIGH);
-		digitalWrite(dirPin2, HIGH);
 	}
 	
 	// Send PWM value

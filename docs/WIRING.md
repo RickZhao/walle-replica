@@ -23,8 +23,41 @@ Arduino UNO R3 与舵机控制板、电机控制板的接线。**所有引脚以
                                 │  TB6612)     │  │ OE <- D10      │
                                 └──────┬───────┘  └────────┬───────┘
                                        ▼                   ▼ PWM 0-6
-                                左/右行走电机 ×2      7 个舵机(头/颈/眼/臂)
+                                左/右行走电机 ×2      9 个舵机(头/颈/眼/臂/眉)
 ```
+
+## 0. 模块化底板（推荐，替代杜邦线）
+
+仓库已提供完整的 KiCad 10 底板工程：`hardware/walle-shield/`。
+
+- **尺寸**：140 mm × 100 mm，2 层板，4 个 M3 安装孔。
+- **设计理念**：底板只焊接直插器件（排母、端子、开关、保险丝、3 个电阻）；Arduino、TB6612FNG 模块、PCA9685 模块、降压模块直接插上，避免大量杜邦线。
+- **状态**：脚本已生成原理图、PCB、Gerber/Drill/BOM。PCB 已完成布局和网络分配，**但尚未自动布线**，最终走线需要在 KiCad 中手动完成（或先用自动布线器）。
+
+### 底板对外接口速查
+
+| 标号 | 接口 | 说明 |
+|------|------|------|
+| `J6` | 电池输入 | 3S LiPo（满电 12.6 V），经保险丝 `F1`、总开关 `SW1` 后分配 |
+| `J4` | 降压输入 | 接 12 V→5 V 降压模块输入 |
+| `J5` | 降压输出 | 5 V 输出，给 PCA9685、Arduino、舵机、OLED、树莓派 |
+| `J17` | 树莓派 5V | 从底板引出 5 V 给 Raspberry Pi |
+| `J2` + `J2M` | TB6612FNG | 电机驱动模块控制 + 电机电源接口 |
+| `J7` / `J8` | 左/右电机 | 接两个行走电机 |
+| `J3` + `J3PWM` | PCA9685 | 舵机板 I2C 控制 + 7 路 PWM 输出 |
+| `J9`–`J15` | 7 路舵机 | 头、颈上、颈下、右眼、左眼、左臂、右臂 |
+| `J16` | OLED | I2C 4 针接口 |
+| `R1/R2` | 电池分压 | 100 kΩ / 47 kΩ，中点接 Arduino A2 |
+
+### 使用流程
+
+1. 用 KiCad 10 打开 `hardware/walle-shield/walle-shield.kicad_pro`。
+2. 在 PCB 编辑器中完成走线：底层推荐走 `+BATT` / `+5V` 电源，顶层走信号线。
+3. 重新导出 Gerber/Drill，提交工厂打样。
+4. 焊接排母、端子、开关、保险丝座、3 个电阻。
+5. 插上 Arduino、TB6612FNG、PCA9685、降压模块，按下方章节把电机/舵机/树莓派接到对应端子。
+
+> 详细说明、BOM、制造文件见 `hardware/walle-shield/README.md`。
 
 ## 1. 舵机控制板：Adafruit PCA9685（16 路 PWM）
 
@@ -36,24 +69,33 @@ Arduino UNO R3 与舵机控制板、电机控制板的接线。**所有引脚以
 | `SCL` | **A5** | I2C 时钟 |
 | `OE` | **D10** | 输出使能 `SERVO_ENABLE_PIN`，LOW 使能舵机输出 / HIGH 关断 |
 | `VCC` | 5V（逻辑） | 板载逻辑供电，可接 Arduino 5V |
-| `V+` | **外部 5V** | 舵机动力，**必须外接独立电源**（7 个舵机 Arduino 带不动） |
+| `V+` | **外部 5V** | 舵机动力，**必须外接独立电源**（9 个舵机 Arduino 带不动） |
 | `GND` | GND | **与 Arduino 共地** |
 
 ### 舵机接 PCA9685 通道
 
-与 `wall-e.ino:157` 注释定义、`preset[][2]`（`wall-e.ino:144`）下标一一对应：
+与 `wall-e.ino:171` 注释定义、`preset[][2]`（`wall-e.ino:159`）下标一一对应：
 
-| 通道 | 舵机 | 代码下标 |
-|-----|------|---------|
-| 0 | 头部旋转 (head rotation) | preset[0] |
-| 1 | 颈上 (neck top) | preset[1] |
-| 2 | 颈下 (neck bottom) | preset[2] |
-| 3 | 右眼 (eye right) | preset[3] |
-| 4 | 左眼 (eye left) | preset[4] |
-| 5 | 左臂 (arm left) | preset[5] |
-| 6 | 右臂 (arm right) | preset[6] |
+| 通道 | 舵机 | 代码下标 | 串口前缀 | 0 端 (LOW) | 100 端 (HIGH) |
+|-----|------|---------|---------|-----------|---------------|
+| 0 | 头部旋转 (head rotation) | preset[0] | `G` | 最左 | 最右 |
+| 1 | 颈上 (neck top) | preset[1] | `T` | 抬头 | 低头 |
+| 2 | 颈下 (neck bottom) | preset[2] | `B` | 低头 | 抬头 |
+| 3 | 右眼 (eye right) | preset[3] | `U` | 下垂 | 上抬 |
+| 4 | 左眼 (eye left) | preset[4] | `E` | 下垂 | 上抬 |
+| 5 | 左臂 (arm left) | preset[5] | `L` | 放下 | 举起 |
+| 6 | 右臂 (arm right) | preset[6] | `R` | 放下 | 举起 |
+| 7 | 左眉毛 (eyebrow left) | preset[7] | `I` | 压低 | 抬高 |
+| 8 | 右眉毛 (eyebrow right) | preset[8] | `J` | 压低 | 抬高 |
 
-> 通道 7+ 未使用；`NUMBER_OF_SERVOS = 7`（`wall-e.ino:86`）。
+> 通道 9–15 未使用；`NUMBER_OF_SERVOS = 9`（`wall-e.ino:96`）。
+
+说明：
+
+- **通道号 = 代码下标**：固件用 `pwm.setPWM(i, ...)` 按下标寻址，因此 `preset[]` / `curpos[]` / `setpos[]` 等数组的第 i 项就是 PCA9685 第 i 通道。
+- **0–100 是归一化位置**，不是 PWM。实际脉宽由 `preset[i][0..1]`（标定 LOW/HIGH）线性映射：`0 -> preset[i][0]`，`100 -> preset[i][1]`，详见 `docs/SERIAL_PROTOCOL.md` 的"舵机位置映射"一节。
+- 表中 0/100 端的方向含义来自标定 sketch（`wall-e_calibration.ino`）的 LOW/HIGH 提示语；具体机械位置以你标定时确认的为准。
+- **行走电机不占 PCA9685 通道**：左右电机由 TB6612FNG 经 Arduino 引脚驱动（见下节），在运动学数组里排下标 9、10（`motL`/`motR`），与 PCA9685 无关。
 
 ## 2. 电机控制板
 
@@ -133,7 +175,7 @@ TB6612FNG 每路电机需要两个互补的方向输入（`AIN1/AIN2`、`BIN1/BI
                       └──> 分压电路 (可选电池检测) ──> Arduino A2
 ```
 
-- **舵机电源必须独立**：7 个舵机瞬时电流大，从 Arduino 5V 取电会烧 UNO。PCA9685 的 `V+` 接 buck 输出 5V（≥5A）。
+- **舵机电源必须独立**：9 个舵机瞬时电流大，从 Arduino 5V 取电会烧 UNO。PCA9685 的 `V+` 接 buck 输出 5V（≥5A）。
 - **共地**：Arduino、PCA9685、电机板、buck 的 GND 必须全部连一起，否则 I2C/PWM 信号不稳。
 - **舵机动力与逻辑分离**：PCA9685 的 `VCC`（逻辑）和 `V+`（舵机）是分开的，别混。
 - 电池参数：`BATTERY_MAX_VOLTAGE = 12.6`（3S 满）、`BATTERY_MIN_VOLTAGE = 10.2`（`wall-e.ino:57-58`）。
@@ -144,7 +186,7 @@ PCA9685 板上 `V+` 和 `VCC` 是**两个独立电源域**，务必分清：
 
 | 脚 | 供什么电 | 电流 | 接法 |
 |----|---------|------|------|
-| **V+** | 舵机电机动力 | 7 舵机瞬时可达 3–5A | buck 输出 5V，**绝不接 Arduino** |
+| **V+** | 舵机电机动力 | 9 舵机瞬时可达 4–6A | buck 输出 5V，**绝不接 Arduino** |
 | **VCC** | PCA9685 芯片逻辑 | ~几十 mA | Arduino 5V 或 buck 5V，二选一 |
 
 - 若 buck 已供 V+，**V+ 不要再接 Arduino**（反而有烧板风险）。
@@ -299,9 +341,9 @@ UNO 板上标 `GND` 的脚通常有 **3 个**（电源区 2 个并排、模拟�
 | 项 | 代码落点 |
 |----|---------|
 | 电机引脚定义 | `wall-e.ino:32-38` |
-| 舵机通道与下标 | `wall-e.ino:157`、`preset[][2]`（`:144`） |
+| 舵机通道与下标 | `wall-e.ino:171`、`preset[][2]`（`:159`） |
 | PCA9685 地址 0x40 / 60Hz | `wall-e.ino:98`、`:178` |
-| 电机三脚控制逻辑 | `MotorController.hpp:77-113` |
+| 电机三脚控制逻辑 | `MotorController.hpp:102-169` |
 | SERVO_ENABLE_PIN (D10) | `wall-e.ino:38` |
 | 电池电路与参数 | `wall-e.ino:54-59` |
 | OLED 构造 | `wall-e.ino:78` |
