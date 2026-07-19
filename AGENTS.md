@@ -113,7 +113,7 @@ dmesg | grep tty
 - **`app.py`** 是 Flask 单体入口：
   - 启动时优先加载 `local_config.py`（如果存在），否则加载 `config.py`。
   - 全局 `arduino = ArduinoDevice()` 创建串口线程，通过发送队列向后端写指令。
-  - 首次访问 `/` 时根据 `AUTOSTART_ARDUINO` / `AUTOSTART_CAM` 自动连接 Arduino / 启动摄像头。
+  - 服务启动时（`__main__` 里的 `autostart_systems()`）根据 `AUTOSTART_ARDUINO` / `AUTOSTART_CAM` 自动连接 Arduino / 启动摄像头，无需先打开网页；Arduino 连接失败会重试 5 次（间隔 2s）。
 - **串口线程**：`ArduinoDevice.__communication_thread()` 持续读取串口回显/电量，并逐条写入队列中的指令。
 - **摄像头流**：`PiCameraStreamer` 在**独立进程外 HTTP 服务（端口 8080）** 提供 `/stream.mjpg`；前端 `<img>` 直接引用 `http://<host>:8080/stream.mjpg`。
 - **游戏手柄**：

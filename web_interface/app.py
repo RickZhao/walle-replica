@@ -36,7 +36,6 @@ else:
 
 # Set up global variables
 volume: int = 8
-startup: bool = False
 camera: PiCameraStreamer = PiCameraStreamer()
 
 # Set up logging
@@ -248,6 +247,62 @@ gamepad: GamepadController = GamepadController(arduino, app.config)
 
 ###############################################################
 #
+# Auto-start systems (Arduino / camera) at program start
+#
+###############################################################
+
+def autostart_systems(retries: int = 5, delay: float = 2.0):
+    """
+    Automatically connect the Arduino and start the camera stream, if
+    enabled in the configuration. Called once at program start so that
+    headless control (e.g. gamepad) works without opening the web page.
+
+    :param retries: How often to retry the Arduino connection
+    :param delay:   Seconds to wait between retries (the USB device may
+                    enumerate after the service has already started)
+    """
+    global arduino
+    global camera
+
+    # Connect to the Arduino
+    if app.config['AUTOSTART_ARDUINO']:
+        connected: bool = False
+        for attempt in range(retries):
+            # Prefer the configured port; fall back to the first listed port
+            usb_ports = [
+                p.device for p in serial.tools.list_ports.comports()
+            ]
+            if app.config['ARDUINO_PORT'] in usb_ports:
+                port = app.config['ARDUINO_PORT']
+            elif usb_ports:
+                port = usb_ports[0]
+            else:
+                port = ""
+
+            if port and arduino.connect(port):
+                connected = True
+                logging.info(f"Auto-start Complete: Arduino communication ({port})")
+                break
+
+            if attempt < retries - 1:
+                time.sleep(delay)
+
+        if not connected:
+            logging.warning("Auto-start Failed: Arduino communication")
+
+    # Start the camera stream
+    try:
+        if app.config['AUTOSTART_CAM'] and not camera.is_stream_active():
+            if camera.start_stream():
+                logging.info("Auto-start Complete: Camera stream")
+            else:
+                logging.warning("Auto-start Failed: Camera stream")
+    except Exception as ex:
+        logging.error(f'Auto-start Error: {repr(ex)}')
+
+
+###############################################################
+#
 # Flask Pages and Functions
 #
 ###############################################################
@@ -312,33 +367,6 @@ def index():
             selectedPort = index
             logger.info(f'Found serial port ({item}) index [{index}]')
             break
-
-    # Automatically connect systems on startup
-    global startup
-    global arduino
-    global camera
-
-    if not startup:
-        startup = True
-
-        try:
-            # If user has selected for the Arduino to connect by default, do so now
-            if app.config['AUTOSTART_ARDUINO'] and selectedPort < len(usb_ports):
-                if arduino.connect(selectedPort):
-                    logging.info("Auto-start Complete: Arduino communication")
-                else:
-                    logging.warning("Auto-start Failed: Arduino communication")
-
-            # If user has selected for the camera stream to be active by default, turn it on now
-            if app.config['AUTOSTART_CAM'] and not camera.is_stream_active():
-                if camera.start_stream():
-                    logging.info("Auto-start Complete: Camera stream")
-                else:
-                    logging.warning("Auto-start Failed: Camera stream")
-
-        except Exception as ex:
-            errors.append(repr(ex))
-            logging.error(f'Auto-start Error: {repr(ex)}')
 
     return render_template('index.html',
                            sounds=files,
@@ -782,6 +810,9 @@ if __name__ == '__main__':
 
     # 确保退出时清理手柄线程
     atexit.register(gamepad.stop)
+
+    # 服务启动即连接 Arduino / 启动摄像头，无需先打开网页（手柄开箱即用）
+    autostart_systems()
 
     # Debug mode
     if app.config['APP_DEBUG']:
