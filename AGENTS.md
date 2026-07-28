@@ -23,6 +23,14 @@ walle-replica/
 │   └── display.ino              # 可选 OLED 电量显示（需启用 #define OLED）
 ├── wall-e_calibration/          # 舵机标定 sketch
 │   └── wall-e_calibration.ino   # 交互式标定 9 个舵机 LOW/HIGH PWM，输出 preset 数组
+├── wall-e_esp32/                # ESP32-S3 移植版主控固件（串口协议与 UNO 版完全一致）
+│   ├── wall-e_esp32.ino         # 主程序；引脚映射改为 ESP32-S3，TB6612 STBY、I2C 引脚可配
+│   ├── animations.ino           # 与 wall-e/animations.ino 相同（复制件）
+│   ├── MotorController.hpp      # 与 wall-e/MotorController.hpp 相同（复制件）
+│   ├── Queue.hpp                # 与 wall-e/Queue.hpp 相同（复制件）
+│   └── display.ino              # 与 wall-e/display.ino 相同（复制件）
+├── wall-e_esp32_calibration/    # ESP32-S3 版舵机标定 sketch
+│   └── wall-e_esp32_calibration.ino
 ├── web_interface/               # 树莓派 Web 控制端
 │   ├── app.py                   # Flask 单体入口：路由 + ArduinoDevice 串口线程
 │   ├── config.py                # 全局配置（全大写键名）
@@ -43,6 +51,8 @@ walle-replica/
 │   ├── VOICE_LLM_PLAN.md        # 语音 + LLM 方案（尚未实现）
 │   └── REID_FOLLOW_PLAN.md      # Re-ID 视觉跟随方案（尚未实现）
 ├── raspi-setup.sh               # 树莓派一键安装/自启脚本
+├── hardware/                    # PCB 设计文件与第三方方案资料
+│   └── 另一套硬件方案.md         # 第三方 ESP32-S3 方案 BOM（由同名 xlsx 转录）
 ├── models/                      # 空目录；设计文档提到的 TFLite 模型尚未提交
 ├── images/                      # 接线图、电路图
 ├── README.md / README.zh-CN.md
@@ -54,9 +64,9 @@ walle-replica/
 ### 3.1 Arduino 端
 - **语言**：C++（Arduino 框架）
 - **开发环境**：Arduino IDE（推荐）
-- **必需库**：`Adafruit_PWMServoDriver`（PCA9685 16 路 PWM 舵机板）
+- **必需库**：`Adafruit_PWMServoDriver`（PCA9685 / LU9685 16 路 PWM 舵机板）
 - **可选库**：`U8g2`（SH1106 OLED 电量显示）
-- **控制器**：Arduino UNO R3（代码按 UNO 引脚映射编写）
+- **控制器**：Arduino UNO R3（`wall-e/`，按 UNO 引脚映射编写）或 ESP32-S3（`wall-e_esp32/`，需 Arduino-ESP32 core 3.x，Tools → USB CDC On Boot → Enabled）
 
 ### 3.2 树莓派 Web 端
 - **语言**：Python 3
@@ -77,6 +87,13 @@ walle-replica/
 3. 根据 `wall-e_calibration/wall-e_calibration.ino` 标定得到 `preset[][2]` 数组，贴回 `wall-e.ino` 第 159–167 行。
 4. 选择正确的 Board / Port，上传。
 5. 串口监视器波特率设为 **115200**。
+
+#### ESP32-S3 版本（`wall-e_esp32/`）
+1. 安装 esp32 开发板包（Arduino-ESP32 core **3.x**）和 `Adafruit_PWMServoDriver` 库。
+2. 打开 `wall-e_esp32/wall-e_esp32.ino`；选择 ESP32-S3 开发板，设置 **Tools → USB CDC On Boot → Enabled**。
+3. 引脚映射在文件顶部 `#define`（默认：TB6612 用 GPIO 4/5/6/7/15/16，STBY=17，I2C SDA=8/SCL=9，OE=10，电池 ADC=GPIO1）。
+4. 用 `wall-e_esp32_calibration/` 标定后把 `preset` 贴回主 sketch；沿用同一块 60Hz 舵机板和机械结构时，UNO 版的 `preset` 值可直接复用。
+5. 上传后串口协议与 UNO 版**完全一致**，`web_interface/` 无需任何改动，只需把 `local_config.py` 的串口指向 ESP32-S3 的端口。
 
 ### 4.2 树莓派 Web 服务
 
@@ -162,6 +179,8 @@ setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 ```
 
 下标含义：`0=head`、`1=necT`、`2=necB`、`3=eyeR`、`4=eyeL`、`5=armL`、`6=armR`、`7=broL`、`8=broR`。
+
+**ESP32-S3 版**（`wall-e_esp32/`）在上述逻辑关节顺序与 PWM 板物理通道之间加了一层 `servoChannel[]` 映射（默认适配第三方线束：通道 `0=eyeL`、`1=eyeR`、`2=head`、`3=necT`、`4=necB`、`5=armL`、`6=armR`、`7=broL`、`8=broR`）。`preset`、`setpos`、动画、串口指令仍全部使用逻辑关节顺序；接线或线束不同时只需改 `servoChannel[]` 一个数组（标定 sketch 内有同一张表）。
 
 ### 6.5 新增指令的约定
 
