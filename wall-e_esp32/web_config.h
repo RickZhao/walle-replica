@@ -38,4 +38,20 @@
 // Bluetooth gamepad via Bluepad32 (1 = enabled, 0 = disabled)
 #define BT_GAMEPAD_ENABLED 1
 
+// Displays (third-party BOM): 2x GC9A01 1.28" round (eyes) + 1x ST7789
+// 1.3" 240x240 (status screen). All three share one SPI bus; each has
+// its own CS/DC, RST and BL are tied together across the displays.
+// Set to 0 when the displays are not wired up.
+#define DISPLAYS_ENABLED  1
+#define TFT_SPI_SCK       21   // shared SPI clock
+#define TFT_SPI_MOSI      18   // shared SPI data (displays have no MISO)
+#define TFT_RST           47   // shared reset line
+#define TFT_BL            48   // shared backlight
+#define EYE_L_CS          38   // left eye (GC9A01 #1)
+#define EYE_L_DC          39
+#define EYE_R_CS          40   // right eye (GC9A01 #2)
+#define EYE_R_DC          41
+#define STATUS_CS         42   // status screen (ST7789)
+#define STATUS_DC         14
+
 #endif /* WEB_CONFIG_H */

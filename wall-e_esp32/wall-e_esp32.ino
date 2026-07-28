@@ -41,6 +41,8 @@
 #include "web_server.hpp"
 #include "audio_player.hpp"
 #include "bt_gamepad.hpp"
+#include "eye_display.hpp"
+#include "status_display.hpp"
 
 
 /// Define pin-mapping (ESP32-S3)
@@ -279,6 +281,10 @@ void setup() {
 	webServerInit();
 	audioPlayerInit();
 
+	// Bring up the eye and status displays (GC9A01 x2 + ST7789)
+	eyeDisplayInit();
+	statusDisplayInit();
+
 	Serial.println(F("Startup complete; entering main loop"));
 }
 
@@ -448,18 +454,22 @@ void evaluateCommand(char prefix, int number) {
 	else if (prefix == 'j') {		// Left head tilt
 		setpos[4] = preset[4][0];
 		setpos[3] = preset[3][1];
+		eyeDisplaySetExpression(EYE_TILT_LEFT);
 	}
 	else if (prefix == 'l') {		// Right head tilt
 		setpos[4] = preset[4][1];
 		setpos[3] = preset[3][0];
+		eyeDisplaySetExpression(EYE_TILT_RIGHT);
 	}
 	else if (prefix == 'i') {		// Sad head
 		setpos[4] = preset[4][0];
 		setpos[3] = preset[3][0];
+		eyeDisplaySetExpression(EYE_SAD);
 	}
 	else if (prefix == 'k') {		// Neutral head
 		setpos[4] = int(0.4 * (preset[4][1] - preset[4][0]) + preset[4][0]);
 		setpos[3] = int(0.4 * (preset[3][1] - preset[3][0]) + preset[3][0]);
+		eyeDisplaySetExpression(EYE_NEUTRAL);
 	}
 
 
@@ -770,6 +780,10 @@ void loop() {
 	webServerLoop();
 	audioPlayerLoop();
 	btGamepadLoop();
+
+	// Animate the eye displays and refresh the status screen
+	eyeDisplayLoop();
+	statusDisplayLoop();
 
 	// Read any new serial messages
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
