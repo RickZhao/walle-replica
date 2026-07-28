@@ -38,6 +38,9 @@
 #include <Adafruit_PWMServoDriver.h>
 #include "Queue.hpp"
 #include "MotorController.hpp"
+#include "web_server.hpp"
+#include "audio_player.hpp"
+#include "bt_gamepad.hpp"
 
 
 /// Define pin-mapping (ESP32-S3)
@@ -164,6 +167,7 @@ unsigned long motorTimer = 0;
 unsigned long statusTimer = 0;
 unsigned long updateTimer = 0;
 bool autoMode = false;
+int batteryLevel = -999;      // Last measured battery %; -999 = no reading (web UI hides the icon)
 
 
 // Serial Parsing
@@ -268,6 +272,13 @@ void setup() {
 		analogSetPinAttenuation(BATTERY_LEVEL_PIN, ADC_11db);
 	#endif
 
+	// Bring up the Bluetooth gamepad, Wi-Fi + HTTP web interface,
+	// and the I2S audio player (LittleFS is mounted by webServerInit,
+	// so the audio player must come after it)
+	btGamepadInit();
+	webServerInit();
+	audioPlayerInit();
+
 	Serial.println(F("Startup complete; entering main loop"));
 }
 
@@ -321,66 +332,82 @@ void readSerial() {
 
 void evaluateSerial() {
 
-	// Evaluate integer number in the serial buffer
-	int number = atoi(serialBuffer);
+	// Evaluate integer number in the serial buffer, then dispatch
+	evaluateCommand(firstChar, atoi(serialBuffer));
+}
 
-	Serial.print(firstChar); Serial.println(number);
+
+
+// -------------------------------------------------------------------
+/// Evaluate a single command
+///
+/// Shared command dispatcher, called by BOTH the serial parser
+/// (evaluateSerial) and the HTTP web server (web_server.cpp), so the
+/// behaviour of the USB serial and Wi-Fi control paths is identical.
+///
+/// @param  prefix  Command prefix character (see docs/SERIAL_PROTOCOL.md)
+/// @param  number  Numeric argument of the command
+// -------------------------------------------------------------------
+
+void evaluateCommand(char prefix, int number) {
+
+	Serial.print(prefix); Serial.println(number);
 
 
 	// Motor Inputs and Offsets
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
-	if      (firstChar == 'X' && number >= -100 && number <= 100) turnValue = int(number * 2.55);       // Left/right control
-	else if (firstChar == 'Y' && number >= -100 && number <= 100) moveValue = int(number * 2.55);       // Forward/reverse control
-	else if (firstChar == 'S' && number >= -100 && number <= 100) turnOffset = number;                  // Steering offset
-	else if (firstChar == 'O' && number >=    0 && number <= 250) motorDeadzone = int(number);          // Motor deadzone offset
+	if      (prefix == 'X' && number >= -100 && number <= 100) turnValue = int(number * 2.55);       // Left/right control
+	else if (prefix == 'Y' && number >= -100 && number <= 100) moveValue = int(number * 2.55);       // Forward/reverse control
+	else if (prefix == 'S' && number >= -100 && number <= 100) turnOffset = number;                  // Steering offset
+	else if (prefix == 'O' && number >=    0 && number <= 250) motorDeadzone = int(number);          // Motor deadzone offset
 
 
 	// Animations
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
-	else if (firstChar == 'A') playAnimation(number);
+	else if (prefix == 'A') playAnimation(number);
 
 
 	// Autonomous servo mode
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
-	else if (firstChar == 'M' && number == 0) autoMode = false;
-	else if (firstChar == 'M' && number == 1) autoMode = true;
+	else if (prefix == 'M' && number == 0) autoMode = false;
+	else if (prefix == 'M' && number == 1) autoMode = true;
 
 
 	// Manual servo control
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
-	else if (firstChar == 'L' && number >= 0 && number <= 100) {   // Move left arm
+	else if (prefix == 'L' && number >= 0 && number <= 100) {   // Move left arm
 		autoMode = false;
 		queue.clear();
 		setpos[5] = int(number * 0.01 * (preset[5][1] - preset[5][0]) + preset[5][0]);
-	} else if (firstChar == 'R' && number >= 0 && number <= 100) { // Move right arm
+	} else if (prefix == 'R' && number >= 0 && number <= 100) { // Move right arm
 		autoMode = false;
 		queue.clear();
 		setpos[6] = int(number * 0.01 * (preset[6][1] - preset[6][0]) + preset[6][0]);
-	} else if (firstChar == 'B' && number >= 0 && number <= 100) { // Move neck bottom
+	} else if (prefix == 'B' && number >= 0 && number <= 100) { // Move neck bottom
 		autoMode = false;
 		queue.clear();
 		setpos[2] = int(number * 0.01 * (preset[2][1] - preset[2][0]) + preset[2][0]);
-	} else if (firstChar == 'T' && number >= 0 && number <= 100) { // Move neck top
+	} else if (prefix == 'T' && number >= 0 && number <= 100) { // Move neck top
 		autoMode = false;
 		queue.clear();
 		setpos[1] = int(number * 0.01 * (preset[1][1] - preset[1][0]) + preset[1][0]);
-	} else if (firstChar == 'G' && number >= 0 && number <= 100) { // Move head rotation
+	} else if (prefix == 'G' && number >= 0 && number <= 100) { // Move head rotation
 		autoMode = false;
 		queue.clear();
 		setpos[0] = int(number * 0.01 * (preset[0][1] - preset[0][0]) + preset[0][0]);
-	} else if (firstChar == 'E' && number >= 0 && number <= 100) { // Move eye left
+	} else if (prefix == 'E' && number >= 0 && number <= 100) { // Move eye left
 		autoMode = false;
 		queue.clear();
 		setpos[4] = int(number * 0.01 * (preset[4][1] - preset[4][0]) + preset[4][0]);
-	} else if (firstChar == 'U' && number >= 0 && number <= 100) { // Move eye right
+	} else if (prefix == 'U' && number >= 0 && number <= 100) { // Move eye right
 		autoMode = false;
 		queue.clear();
 		setpos[3] = int(number * 0.01 * (preset[3][1] - preset[3][0]) + preset[3][0]);
-	} else if (firstChar == 'I' && number >= 0 && number <= 100) { // Move eyebrow left
+	} else if (prefix == 'I' && number >= 0 && number <= 100) { // Move eyebrow left
 		autoMode = false;
 		queue.clear();
 		setpos[7] = int(number * 0.01 * (preset[7][1] - preset[7][0]) + preset[7][0]);
-	} else if (firstChar == 'J' && number >= 0 && number <= 100) { // Move eyebrow right
+	} else if (prefix == 'J' && number >= 0 && number <= 100) { // Move eyebrow right
 		autoMode = false;
 		queue.clear();
 		setpos[8] = int(number * 0.01 * (preset[8][1] - preset[8][0]) + preset[8][0]);
@@ -389,27 +416,27 @@ void evaluateSerial() {
 
 	// Manual Movements with WASD
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
-	else if (firstChar == 'w') {		// Forward movement
+	else if (prefix == 'w') {		// Forward movement
 		moveValue = pwmspeed;
 		turnValue = 0;
 		setpos[0] = (preset[0][1] + preset[0][0]) / 2;
 	}
-	else if (firstChar == 'q') {		// Stop movement
+	else if (prefix == 'q') {		// Stop movement
 		moveValue = 0;
 		turnValue = 0;
 		setpos[0] = (preset[0][1] + preset[0][0]) / 2;
 	}
-	else if (firstChar == 's') {		// Backward movement
+	else if (prefix == 's') {		// Backward movement
 		moveValue = -pwmspeed;
 		turnValue = 0;
 		setpos[0] = (preset[0][1] + preset[0][0]) / 2;
 	}
-	else if (firstChar == 'a') {		// Drive & look left
+	else if (prefix == 'a') {		// Drive & look left
 		moveValue = 0;
 		turnValue = -pwmspeed;
 		setpos[0] = preset[0][0];
 	}
-	else if (firstChar == 'd') {   		// Drive & look right
+	else if (prefix == 'd') {   		// Drive & look right
 		moveValue = 0;
 		turnValue = pwmspeed;
 		setpos[0] = preset[0][1];
@@ -418,19 +445,19 @@ void evaluateSerial() {
 
 	// Manual Eye Movements
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
-	else if (firstChar == 'j') {		// Left head tilt
+	else if (prefix == 'j') {		// Left head tilt
 		setpos[4] = preset[4][0];
 		setpos[3] = preset[3][1];
 	}
-	else if (firstChar == 'l') {		// Right head tilt
+	else if (prefix == 'l') {		// Right head tilt
 		setpos[4] = preset[4][1];
 		setpos[3] = preset[3][0];
 	}
-	else if (firstChar == 'i') {		// Sad head
+	else if (prefix == 'i') {		// Sad head
 		setpos[4] = preset[4][0];
 		setpos[3] = preset[3][0];
 	}
-	else if (firstChar == 'k') {		// Neutral head
+	else if (prefix == 'k') {		// Neutral head
 		setpos[4] = int(0.4 * (preset[4][1] - preset[4][0]) + preset[4][0]);
 		setpos[3] = int(0.4 * (preset[3][1] - preset[3][0]) + preset[3][0]);
 	}
@@ -438,15 +465,15 @@ void evaluateSerial() {
 
 	// Head movement
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
-	else if (firstChar == 'f') {		// Head up
+	else if (prefix == 'f') {		// Head up
 		setpos[1] = preset[1][0];
 		setpos[2] = (preset[2][1] + preset[2][0])/2;
 	}
-	else if (firstChar == 'g') {		// Head forward
+	else if (prefix == 'g') {		// Head forward
 		setpos[1] = preset[1][1];
 		setpos[2] = preset[2][0];
 	}
-	else if (firstChar == 'h') {		// Head down
+	else if (prefix == 'h') {		// Head down
 		setpos[1] = preset[1][0];
 		setpos[2] = preset[2][0];
 	}
@@ -454,15 +481,15 @@ void evaluateSerial() {
 
 	// Arm Movements
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --
-	else if (firstChar == 'b') {		// Left arm low, right arm high
+	else if (prefix == 'b') {		// Left arm low, right arm high
 		setpos[5] = preset[5][0];
 		setpos[6] = preset[6][1];
 	}
-	else if (firstChar == 'n') {		// Both arms neutral
+	else if (prefix == 'n') {		// Both arms neutral
 		setpos[5] = (preset[5][0] + preset[5][1]) / 2;
 		setpos[6] = (preset[6][0] + preset[6][1]) / 2;
 	}
-	else if (firstChar == 'm') {		// Left arm high, right arm low
+	else if (prefix == 'm') {		// Left arm high, right arm low
 		setpos[5] = preset[5][1];
 		setpos[6] = preset[6][0];
 	}
@@ -717,6 +744,9 @@ void checkBatteryLevel() {
 	if (percentage > 100) percentage = 100;
 	if (percentage < 0) percentage = 0;
 
+	// Store for the web interface (/arduinoStatus route)
+	batteryLevel = percentage;
+
   // Update the oLed Display if installed
   #ifdef OLED
     displayLevel(percentage);
@@ -734,6 +764,12 @@ void checkBatteryLevel() {
 // -------------------------------------------------------------------
 
 void loop() {
+
+	// Handle pending web server actions (e.g. delayed restart),
+	// feed the audio decoder and poll the Bluetooth gamepad
+	webServerLoop();
+	audioPlayerLoop();
+	btGamepadLoop();
 
 	// Read any new serial messages
 	// -- -- -- -- -- -- -- -- -- -- -- -- -- --

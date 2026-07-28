@@ -25,12 +25,21 @@ walle-replica/
 │   └── wall-e_calibration.ino   # 交互式标定 9 个舵机 LOW/HIGH PWM，输出 preset 数组
 ├── wall-e_esp32/                # ESP32-S3 移植版主控固件（串口协议与 UNO 版完全一致）
 │   ├── wall-e_esp32.ino         # 主程序；引脚映射改为 ESP32-S3，TB6612 STBY、I2C 引脚可配
+│   ├── web_server.hpp/.cpp      # 内置 Web 控制端（替代树莓派 Flask；HTTP 与串口共用 evaluateCommand()）
+│   ├── audio_player.hpp/.cpp    # PCM5102 I2S 音频播放（ESP32-audioI2S 库，播 LittleFS 中的 wav）
+│   ├── bt_gamepad.hpp/.cpp      # 蓝牙手柄（Bluepad32 库，映射照抄 gamepad.py）
+│   ├── web_config.h             # Wi-Fi STA/AP、登录密码、I2S 引脚、手柄开关（默认空 SSID → AP 模式）
+│   ├── partitions.csv           # 16MB 自定义分区表（双 OTA + ~12MB LittleFS）
+│   ├── data/                    # LittleFS 镜像内容：去 Jinja 化的 index/login.html + static/ 全部前端资源
 │   ├── animations.ino           # 与 wall-e/animations.ino 相同（复制件）
 │   ├── MotorController.hpp      # 与 wall-e/MotorController.hpp 相同（复制件）
 │   ├── Queue.hpp                # 与 wall-e/Queue.hpp 相同（复制件）
 │   └── display.ino              # 与 wall-e/display.ino 相同（复制件）
 ├── wall-e_esp32_calibration/    # ESP32-S3 版舵机标定 sketch
 │   └── wall-e_esp32_calibration.ino
+├── wall-e_esp32_cam/            # 第二块 ESP32-S3-CAM 的 MJPEG 推流固件（与主控仅电源线相连，数据走 Wi-Fi）
+│   ├── wall-e_esp32_cam.ino     # esp32-camera + esp_http_server，/stream 出 MJPEG，支持连主控 WallE AP 回退
+│   └── camera_pins.h            # 常见 S3-CAM 板型引脚预设（XIAO/Freenove/S3-EYE，选一个）
 ├── web_interface/               # 树莓派 Web 控制端
 │   ├── app.py                   # Flask 单体入口：路由 + ArduinoDevice 串口线程
 │   ├── config.py                # 全局配置（全大写键名）
@@ -89,11 +98,22 @@ walle-replica/
 5. 串口监视器波特率设为 **115200**。
 
 #### ESP32-S3 版本（`wall-e_esp32/`）
-1. 安装 esp32 开发板包（Arduino-ESP32 core **3.x**）和 `Adafruit_PWMServoDriver` 库。
-2. 打开 `wall-e_esp32/wall-e_esp32.ino`；选择 ESP32-S3 开发板，设置 **Tools → USB CDC On Boot → Enabled**。
+1. 安装 esp32 开发板包（Arduino-ESP32 core **3.x**）和库：`Adafruit_PWMServoDriver`、`ESPAsyncWebServer` + `AsyncTCP`（ESP32Async 组织维护，兼容 core 3.x）、`ESP32-audioI2S`（schreibfaul1，音频播放）、`Bluepad32`（蓝牙手柄）。
+2. 打开 `wall-e_esp32/wall-e_esp32.ino`；选择 ESP32-S3 开发板，设置 **Tools → USB CDC On Boot → Enabled**，**Tools → Partition Scheme → Custom**（使用 sketch 目录下的 `partitions.csv`）。
 3. 引脚映射在文件顶部 `#define`（默认：TB6612 用 GPIO 4/5/6/7/15/16，STBY=17，I2C SDA=8/SCL=9，OE=10，电池 ADC=GPIO1）。
 4. 用 `wall-e_esp32_calibration/` 标定后把 `preset` 贴回主 sketch；沿用同一块 60Hz 舵机板和机械结构时，UNO 版的 `preset` 值可直接复用。
 5. 上传后串口协议与 UNO 版**完全一致**，`web_interface/` 无需任何改动，只需把 `local_config.py` 的串口指向 ESP32-S3 的端口。
+
+#### ESP32-S3 内置 Web 控制端（可脱离树莓派）
+`wall-e_esp32/` 自带与 Flask 版路由兼容的 HTTP 服务器（`web_server.cpp`），Wi-Fi 遥控不再依赖树莓派：
+1. 编辑 `wall-e_esp32/web_config.h`：填 `WIFI_SSID`/`WIFI_PASSWORD` 走 STA 模式；留空则启动 AP 热点（默认 `WallE` / `walle1234`）。**不要把真实密码提交到 git**。
+2. 上传固件后，用 Arduino IDE 的 **LittleFS Data Upload** 插件把 `wall-e_esp32/data/` 上传到 LittleFS 分区（首次或前端变更时执行）。
+3. 浏览器访问 `http://<esp-ip>`（AP 模式为 `http://192.168.4.1`），登录密码同 `web_config.h`（默认 `walle`）。
+4. 已移植路由：`/`、`/login`、`/login_request`、`/motor`、`/settings`（motorOff/steerOff/animeMode/volume/streamer/restart）、`/animate`、`/servoControl`、`/arduinoConnect`（恒 Connected）、`/arduinoStatus`（电量）、`/gamepadStatus`（真实蓝牙手柄状态）、`/audio`（PCM5102 I2S 播放 wav）。HTTP 与 USB 串口共用 `evaluateCommand()`，行为一致。
+5. 尚未移植：`/tts`（云端 TTS，返回明确 Error）；BOM 扩展项（INMP441 麦克风、ASR-Pro、圆屏眼睛、1.3 寸彩屏）。
+6. 蓝牙手柄：默认启用（`web_config.h` 的 `BT_GAMEPAD_ENABLED`），手柄进入配对模式即可连接；映射与 `gamepad.py` 一致（左摇杆行走、右摇杆头/颈、LT/RT 降臂、LB/RB 升臂、ABXY 眼部表情、Back 切自动模式、十字键随机音效/动画）。
+7. 摄像头（第二块 ESP32-S3-CAM）：编辑 `wall-e_esp32_cam/camera_pins.h` 选板型、在 sketch 顶部填 Wi-Fi 凭据（留空则连主控 `WallE` AP），烧录后从串口拿到 IP，填入 `wall-e_esp32/data/index.html` 顶部的 `stream_url`（如 `http://192.168.4.3/stream`），重新上传 LittleFS 数据。
+8. 前端 `data/index.html`/`login.html` 由 `web_interface/templates/` 去 Jinja 化生成（静态路径、`CODEBLOCK_*` 与音效列表为构建期烘焙值）；Pi 端模板改动后需重新生成（会覆盖 `stream_url` 行）。
 
 ### 4.2 树莓派 Web 服务
 
