@@ -5,12 +5,14 @@
  *   - Voice: INMP441 mic + PCM5102 DAC (NoAudioCodecSimplex)
  *   - Eyes:  single GC9A01 1.28" round 240x240 display (LVGL via SpiLcdDisplay)
  *   - Motion: TB6612 motors + LU9685/PCA9685 servos (walle_motion, stage 2)
+ *   - Network: Wi-Fi first, ML307A 4G fallback on connect timeout
+ *     (DualNetworkBoard; double-click BOOT to switch manually)
  *
  * Reference boards: bread-compact-wifi (audio/buttons),
  * spotpear/sp-esp32-s3-1.28-box (GC9A01 wiring), electron-bot (robot style).
  */
 
-#include "wifi_board.h"
+#include "dual_network_board.h"
 #include "codecs/no_audio_codec.h"
 #include "display/lcd_display.h"
 #include "system_reset.h"
@@ -36,10 +38,14 @@
 extern void WalleSerialStart();
 
 
-class WalleBoard : public WifiBoard {
+class WalleBoard : public DualNetworkBoard {
 private:
     Display* display_ = nullptr;
     Button boot_button_;
+    NetworkEventCallback app_callback_;
+    // Distinguishes a user-requested Wi-Fi config mode from the connect-timeout
+    // path (which triggers the automatic 4G fallback instead).
+    bool manual_config_request_ = false;
 
     void InitializeSpi() {
         ESP_LOGI(TAG, "Initialize SPI bus");
@@ -83,15 +89,27 @@ private:
         boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
-                EnterWifiConfigMode();
-                return;
+                if (GetNetworkType() == NetworkType::WIFI) {
+                    manual_config_request_ = true;
+                    static_cast<WifiBoard&>(GetCurrentBoard()).EnterWifiConfigMode();
+                    return;
+                }
             }
             app.ToggleChatState();
+        });
+        // Double-click in starting/configuring state: manually switch Wi-Fi <-> 4G
+        boot_button_.OnDoubleClick([this]() {
+            auto& app = Application::GetInstance();
+            if (app.GetDeviceState() == kDeviceStateStarting || app.GetDeviceState() == kDeviceStateWifiConfiguring) {
+                manual_config_request_ = true;
+                SwitchNetworkType();
+            }
         });
     }
 
 public:
-    WalleBoard() : boot_button_(BOOT_BUTTON_GPIO) {
+    WalleBoard() : DualNetworkBoard(ML307_TX_PIN, ML307_RX_PIN, ML307_DTR_PIN, /*default_net_type=*/0),
+        boot_button_(BOOT_BUTTON_GPIO) {
         InitializeSpi();
         InitializeDisplay();
         InitializeButtons();
@@ -130,6 +148,27 @@ public:
 
     virtual Display* GetDisplay() override {
         return display_;
+    }
+
+    // Wrap the application callback: a Wi-Fi connect timeout normally enters
+    // the AP config mode; with WIFI_AUTO_FALLBACK_4G it switches to 4G instead
+    // (unless the user explicitly requested config mode via the BOOT button).
+    virtual void SetNetworkEventCallback(NetworkEventCallback callback) override {
+        app_callback_ = std::move(callback);
+        GetCurrentBoard().SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
+#if WIFI_AUTO_FALLBACK_4G
+            if (event == NetworkEvent::WifiConfigModeEnter
+                && GetNetworkType() == NetworkType::WIFI
+                && !manual_config_request_) {
+                ESP_LOGW(TAG, "Wi-Fi connect timeout, falling back to 4G");
+                SwitchNetworkType();  // saves ML307 as default and reboots
+                return;
+            }
+#endif
+            if (app_callback_) {
+                app_callback_(event, data);
+            }
+        });
     }
 
     virtual Backlight* GetBacklight() override {

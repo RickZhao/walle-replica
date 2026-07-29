@@ -15,7 +15,7 @@
 |------|------|------|------|
 | `archive/arduino-pi/wall-e/` | Arduino (UNO) | 原始方案：UNO + 树莓派 | 维护中 |
 | `archive/wall-e_esp32/wall-e_esp32/` | Arduino (ESP32-S3) | ESP32 单机版：内置 Web 控制端/音频/手柄/显示屏，可脱离树莓派 | **冻结**（保留作 Pi 方案回退） |
-| `wall-e_xiaozhi/main/boards/walle/` | ESP-IDF | **主线**：小智语音交互单 MCU 方案（唤醒词 + 云端 LLM + MCP 动作 + GC9A01 眼睛） | **开发中** |
+| `wall-e_xiaozhi/main/boards/walle/` | ESP-IDF | **主线**：小智语音交互单 MCU 方案（唤醒词 + 云端 LLM + MCP 动作 + GC9A01 眼睛 + 4G 回退） | **开发中** |
 
 硬件接线、舵机标定、电池检测等说明见 `README.md` / `README.zh-CN.md`，详细接线与串口协议见 `docs/`，小智迁移细节见 `docs/XIAOZHI_MIGRATION.md`。
 
@@ -25,13 +25,14 @@
 walle-replica/
 ├── wall-e_xiaozhi/               # ★ 主线：vendored 小智语音固件（ESP-IDF，上游 78/xiaozhi-esp32 @ e0074e9，MIT）
 │   ├── main/boards/walle/       # Wall-E 板型（单 MCU 语音方案主战场）
-│   │   ├── config.h             # 全部引脚定义（音频/显示/电机/舵机/电池/状态屏/Web）
+│   │   ├── config.h             # 全部引脚定义（音频/显示/电机/舵机/电池/状态屏/Web/4G 模组）
 │   │   ├── walle_board.cc       # 板类：GC9A01 显示 + NoAudioCodecSimplex + 按键 + 运动核心/状态屏/Web 启动
+│   │   │                        #   + DualNetworkBoard：Wi-Fi 优先、连接超时自动回退 ML307A 4G（双击 BOOT 手动切网）
 │   │   ├── walle_motion.cc/.h   # 运动核心：舵机动力学、电机斜坡、动画队列、电量（移植自 Arduino 版）
 │   │   ├── walle_mcp_tools.cc   # MCP 工具注册（云端 LLM function calling → 动作）
 │   │   ├── walle_serial.cc      # USB 串口协议任务（调试 + 树莓派回退）
 │   │   ├── walle_web_server.cc  # Web 控制面板（esp_http_server :80，API 兼容 Flask 版，含摄像头画面区）
-│   │   ├── walle_status_display.cc # ST7789 状态屏（第二个 LVGL 屏：电量/Wi-Fi/状态，1s 刷新）
+│   │   ├── walle_status_display.cc # ST7789 状态屏（第二个 LVGL 屏：电量/网络/状态，1s 刷新）
 │   │   ├── pca9685.cc/.h        # LU9685/PCA9685 I2C 舵机驱动（自写，小智原生无此驱动）
 │   │   └── config.json          # 批量构建配置
 │   └── （其余为小智上游源码，详见 docs/XIAOZHI_MIGRATION.md）

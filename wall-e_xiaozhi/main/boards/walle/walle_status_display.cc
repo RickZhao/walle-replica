@@ -15,6 +15,7 @@
 
 #include "application.h"
 #include "device_state_machine.h"
+#include "dual_network_board.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -186,7 +187,10 @@ void WalleStatusDisplay::Refresh() {
     else              snprintf(buf, sizeof(buf), "Battery: --");
     lv_label_set_text(impl_->battery_label, buf);
 
-    if (wifi.IsConnected()) {
+    auto* dual_board = dynamic_cast<DualNetworkBoard*>(&Board::GetInstance());
+    if (dual_board && dual_board->GetNetworkType() == NetworkType::ML307) {
+        snprintf(buf, sizeof(buf), "Net: 4G (ML307)");
+    } else if (wifi.IsConnected()) {
         snprintf(buf, sizeof(buf), "WiFi: %s", wifi.GetIpAddress().c_str());
     } else {
         snprintf(buf, sizeof(buf), "WiFi: connecting...");

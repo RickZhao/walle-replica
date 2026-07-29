@@ -84,4 +84,11 @@
 #define WEB_SERVER_ENABLED      1
 #define WEB_SERVER_PORT         80
 
+// ---- 4G fallback: ML307A Cat.1 modem on UART (TX/RX from ESP32 view) ----
+#define ML307_TX_PIN   GPIO_NUM_2
+#define ML307_RX_PIN   GPIO_NUM_3
+#define ML307_DTR_PIN  GPIO_NUM_NC
+// Wi-Fi connect timeout -> auto switch to 4G (1=on, 0=enter Wi-Fi config mode)
+#define WIFI_AUTO_FALLBACK_4G 1
+
 #endif // _BOARD_CONFIG_H_
