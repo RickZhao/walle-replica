@@ -4,64 +4,58 @@
 
 ## 1. 项目概述
 
-这是一个可动 Wall-E 机器人复刻版的完整控制仓库，分为两大子系统：
+这是一个可动 Wall-E 机器人复刻版的完整控制仓库。当前**主线是小智单 MCU 语音方案**（`wall-e_xiaozhi/`），两套旧方案已移入 `archive/` 归档（仍可编译回退，见 `archive/README.md`）：
 
-1. **Arduino 固件**（`wall-e/`）：直接驱动电机、舵机，通过 USB 串口接收指令。
-2. **Raspberry Pi Web 服务器**（`web_interface/`）：基于 Flask 的 Web 控制界面，通过串口向 Arduino 下发指令；可选接入 CSI 摄像头做 MJPEG 视频推流；支持浏览器虚拟摇杆、游戏手柄、TTS、Blockly 拖拽编程。
+1. **Arduino 固件**（`archive/arduino-pi/wall-e/`）：直接驱动电机、舵机，通过 USB 串口接收指令。
+2. **Raspberry Pi Web 服务器**（`archive/arduino-pi/web_interface/`）：基于 Flask 的 Web 控制界面，通过串口向 Arduino 下发指令；可选接入 CSI 摄像头做 MJPEG 视频推流；支持浏览器虚拟摇杆、游戏手柄、TTS、Blockly 拖拽编程。
 
-硬件接线、舵机标定、电池检测等说明见 `README.md` / `README.zh-CN.md`，详细接线与串口协议见 `docs/`。
+**当前存在三套固件格局**（2026-07 起）：
+
+| 固件 | 框架 | 定位 | 状态 |
+|------|------|------|------|
+| `archive/arduino-pi/wall-e/` | Arduino (UNO) | 原始方案：UNO + 树莓派 | 维护中 |
+| `archive/wall-e_esp32/wall-e_esp32/` | Arduino (ESP32-S3) | ESP32 单机版：内置 Web 控制端/音频/手柄/显示屏，可脱离树莓派 | **冻结**（保留作 Pi 方案回退） |
+| `wall-e_xiaozhi/main/boards/walle/` | ESP-IDF | **主线**：小智语音交互单 MCU 方案（唤醒词 + 云端 LLM + MCP 动作 + GC9A01 眼睛） | **开发中** |
+
+硬件接线、舵机标定、电池检测等说明见 `README.md` / `README.zh-CN.md`，详细接线与串口协议见 `docs/`，小智迁移细节见 `docs/XIAOZHI_MIGRATION.md`。
 
 ## 2. 仓库结构与代码组织
 
 ```
 walle-replica/
-├── wall-e/                      # Arduino 主控固件
-│   ├── wall-e.ino               # 主程序：初始化、串口解析、舵机/电机动力学、电池上报
-│   ├── animations.ino           # 动画队列（case 0/1/2），可扩展新动作
-│   ├── MotorController.hpp      # 电机驱动类（DIR + PWM + BRAKE 三脚控制）
-│   ├── Queue.hpp                # 环形缓冲区/队列模板
-│   └── display.ino              # 可选 OLED 电量显示（需启用 #define OLED）
-├── wall-e_calibration/          # 舵机标定 sketch
-│   └── wall-e_calibration.ino   # 交互式标定 9 个舵机 LOW/HIGH PWM，输出 preset 数组
-├── wall-e_esp32/                # ESP32-S3 移植版主控固件（串口协议与 UNO 版完全一致）
-│   ├── wall-e_esp32.ino         # 主程序；引脚映射改为 ESP32-S3，TB6612 STBY、I2C 引脚可配
-│   ├── web_server.hpp/.cpp      # 内置 Web 控制端（替代树莓派 Flask；HTTP 与串口共用 evaluateCommand()）
-│   ├── audio_player.hpp/.cpp    # PCM5102 I2S 音频播放（ESP32-audioI2S 库，播 LittleFS 中的 wav）
-│   ├── bt_gamepad.hpp/.cpp      # 蓝牙手柄（Bluepad32 库，映射照抄 gamepad.py）
-│   ├── eye_display.hpp/.cpp     # GC9A01 1.28" 圆屏 ×2（眼睛：矢量绘制、表情、自动眨眼）
-│   ├── status_display.hpp/.cpp  # ST7789 1.3" 彩屏（状态：电量/Wi-Fi/手柄/模式）
-│   ├── web_config.h             # Wi-Fi STA/AP、登录密码、I2S 引脚、手柄开关、显示屏引脚（默认空 SSID → AP 模式）
-│   ├── partitions.csv           # 16MB 自定义分区表（双 OTA + ~12MB LittleFS）
-│   ├── data/                    # LittleFS 镜像内容：去 Jinja 化的 index/login.html + static/ 全部前端资源
-│   ├── animations.ino           # 与 wall-e/animations.ino 相同（复制件）
-│   ├── MotorController.hpp      # 与 wall-e/MotorController.hpp 相同（复制件）
-│   ├── Queue.hpp                # 与 wall-e/Queue.hpp 相同（复制件）
-│   └── display.ino              # 与 wall-e/display.ino 相同（复制件）
-├── wall-e_esp32_calibration/    # ESP32-S3 版舵机标定 sketch
-│   └── wall-e_esp32_calibration.ino
-├── wall-e_esp32_cam/            # 第二块 ESP32-S3-CAM 的 MJPEG 推流固件（与主控仅电源线相连，数据走 Wi-Fi）
-│   ├── wall-e_esp32_cam.ino     # esp32-camera + esp_http_server，/stream 出 MJPEG，支持连主控 WallE AP 回退
-│   └── camera_pins.h            # 常见 S3-CAM 板型引脚预设（XIAO/Freenove/S3-EYE，选一个）
-├── web_interface/               # 树莓派 Web 控制端
-│   ├── app.py                   # Flask 单体入口：路由 + ArduinoDevice 串口线程
-│   ├── config.py                # 全局配置（全大写键名）
-│   ├── gamepad.py               # 树莓派本地游戏手柄后台线程（pygame.joystick）
-│   ├── picamera2_stream.py      # 独立 MJPEG 视频流 HTTP 服务器（端口 8080）
-│   ├── walle.service            # systemd 服务模板（raspi-setup.sh 会替换路径/用户名）
-│   ├── templates/               # Jinja2 模板（index.html / login.html）
-│   └── static/                  # 前端资源
-│       ├── js/main.js           # 虚拟摇杆、手柄、AJAX 调用后端路由
-│       ├── js/automation*.js    # Blockly 代码块定义与执行
-│       ├── js/blockly/          # Blockly 库文件
-│       ├── sounds/              # *.wav 音效文件
-│       └── css/ / webfonts/     # Bootstrap / 字体
+├── wall-e_xiaozhi/               # ★ 主线：vendored 小智语音固件（ESP-IDF，上游 78/xiaozhi-esp32 @ e0074e9，MIT）
+│   ├── main/boards/walle/       # Wall-E 板型（单 MCU 语音方案主战场）
+│   │   ├── config.h             # 全部引脚定义（音频/显示/电机/舵机/电池/状态屏/Web）
+│   │   ├── walle_board.cc       # 板类：GC9A01 显示 + NoAudioCodecSimplex + 按键 + 运动核心/状态屏/Web 启动
+│   │   ├── walle_motion.cc/.h   # 运动核心：舵机动力学、电机斜坡、动画队列、电量（移植自 Arduino 版）
+│   │   ├── walle_mcp_tools.cc   # MCP 工具注册（云端 LLM function calling → 动作）
+│   │   ├── walle_serial.cc      # USB 串口协议任务（调试 + 树莓派回退）
+│   │   ├── walle_web_server.cc  # Web 控制面板（esp_http_server :80，API 兼容 Flask 版，含摄像头画面区）
+│   │   ├── walle_status_display.cc # ST7789 状态屏（第二个 LVGL 屏：电量/Wi-Fi/状态，1s 刷新）
+│   │   ├── pca9685.cc/.h        # LU9685/PCA9685 I2C 舵机驱动（自写，小智原生无此驱动）
+│   │   └── config.json          # 批量构建配置
+│   └── （其余为小智上游源码，详见 docs/XIAOZHI_MIGRATION.md）
+├── archive/                     # 非主线方案归档（详见 archive/README.md）
+│   ├── arduino-pi/              # 原始方案：Arduino UNO + 树莓派（跟随上游维护）
+│   │   ├── wall-e/              # UNO 主控固件：wall-e.ino 主程序（初始化、串口解析、舵机/电机动力学、电池上报）、
+│   │   │                        #   animations.ino 动画队列（case 0/1/2）、MotorController.hpp、Queue.hpp、display.ino（OLED 电量）
+│   │   ├── wall-e_calibration/  # UNO 版舵机标定 sketch（交互式标定 9 舵机 LOW/HIGH PWM，输出 preset 数组）
+│   │   ├── web_interface/       # 树莓派 Flask Web 控制端：app.py 单体入口（路由 + ArduinoDevice 串口线程）、
+│   │   │                        #   config.py（全大写键）、gamepad.py、picamera2_stream.py（:8080 MJPEG）、
+│   │   │                        #   walle.service、templates/ + static/（摇杆、Blockly、音效）
+│   │   └── raspi-setup.sh       # 树莓派一键安装/自启脚本
+│   └── wall-e_esp32/            # ESP32-S3 单机版（已冻结，作树莓派方案回退）
+│       ├── wall-e_esp32/        # 主控固件（串口协议与 UNO 版一致）：内置 Web 控制端、PCM5102 I2S 音频、
+│       │                        #   蓝牙手柄（Bluepad32）、GC9A01×2 眼睛 + ST7789 状态屏；data/ 为 LittleFS 镜像
+│       └── wall-e_esp32_calibration/ # ESP32 版标定 sketch（小智固件标定也用这份）
+├── wall-e_esp32_cam/            # 第二块 ESP32-S3-CAM 的 MJPEG 推流固件（/stream，主线配套摄像头外设）
 ├── docs/                        # 中文技术文档
 │   ├── SERIAL_PROTOCOL.md       # 串口通信协议（必读）
 │   ├── WIRING.md                # Arduino 接线指南
 │   ├── HARDWARE.md              # 硬件采购清单
-│   ├── VOICE_LLM_PLAN.md        # 语音 + LLM 方案（尚未实现）
-│   └── REID_FOLLOW_PLAN.md      # Re-ID 视觉跟随方案（尚未实现）
-├── raspi-setup.sh               # 树莓派一键安装/自启脚本
+│   ├── VOICE_LLM_PLAN.md        # 语音 + LLM 方案（树莓派侧备选，尚未实现）
+│   ├── REID_FOLLOW_PLAN.md      # Re-ID 视觉跟随方案（尚未实现）
+│   └── XIAOZHI_MIGRATION.md     # 小智语音迁移：构建、引脚、MCP 工具、Web 面板
 ├── hardware/                    # PCB 设计文件与第三方方案资料
 │   └── 另一套硬件方案.md         # 第三方 ESP32-S3 方案 BOM（由同名 xlsx 转录）
 ├── models/                      # 空目录；设计文档提到的 TFLite 模型尚未提交
@@ -77,7 +71,7 @@ walle-replica/
 - **开发环境**：Arduino IDE（推荐）
 - **必需库**：`Adafruit_PWMServoDriver`（PCA9685 / LU9685 16 路 PWM 舵机板）
 - **可选库**：`U8g2`（SH1106 OLED 电量显示）
-- **控制器**：Arduino UNO R3（`wall-e/`，按 UNO 引脚映射编写）或 ESP32-S3（`wall-e_esp32/`，需 Arduino-ESP32 core 3.x，Tools → USB CDC On Boot → Enabled）
+- **控制器**：Arduino UNO R3（`archive/arduino-pi/wall-e/`，按 UNO 引脚映射编写）或 ESP32-S3（`archive/wall-e_esp32/wall-e_esp32/`，需 Arduino-ESP32 core 3.x，Tools → USB CDC On Boot → Enabled）
 
 ### 3.2 树莓派 Web 端
 - **语言**：Python 3
@@ -94,42 +88,42 @@ walle-replica/
 
 ### 4.1 Arduino 固件
 1. 在 Arduino IDE 安装 `Adafruit_PWMServoDriver` 库。
-2. 打开 `wall-e/wall-e.ino`，`animations.ino`、`MotorController.hpp`、`Queue.hpp` 会在同一窗口自动打开。
-3. 根据 `wall-e_calibration/wall-e_calibration.ino` 标定得到 `preset[][2]` 数组，贴回 `wall-e.ino` 第 159–167 行。
+2. 打开 `archive/arduino-pi/wall-e/wall-e.ino`，`animations.ino`、`MotorController.hpp`、`Queue.hpp` 会在同一窗口自动打开。
+3. 根据 `archive/arduino-pi/wall-e_calibration/wall-e_calibration.ino` 标定得到 `preset[][2]` 数组，贴回 `wall-e.ino` 第 159–167 行。
 4. 选择正确的 Board / Port，上传。
 5. 串口监视器波特率设为 **115200**。
 
-#### ESP32-S3 版本（`wall-e_esp32/`）
+#### ESP32-S3 版本（`archive/wall-e_esp32/wall-e_esp32/`）
 1. 安装 esp32 开发板包（Arduino-ESP32 core **3.x**）和库：`Adafruit_PWMServoDriver`、`ESPAsyncWebServer` + `AsyncTCP`（ESP32Async 组织维护，兼容 core 3.x）、`ESP32-audioI2S`（schreibfaul1，音频播放）、`Bluepad32`（蓝牙手柄）、`Arduino_GFX`（moononournation，GC9A01/ST7789 显示屏）。
-2. 打开 `wall-e_esp32/wall-e_esp32.ino`；选择 ESP32-S3 开发板，设置 **Tools → USB CDC On Boot → Enabled**，**Tools → Partition Scheme → Custom**（使用 sketch 目录下的 `partitions.csv`）。
+2. 打开 `archive/wall-e_esp32/wall-e_esp32/wall-e_esp32.ino`；选择 ESP32-S3 开发板，设置 **Tools → USB CDC On Boot → Enabled**，**Tools → Partition Scheme → Custom**（使用 sketch 目录下的 `partitions.csv`）。
 3. 引脚映射在文件顶部 `#define`（默认：TB6612 用 GPIO 4/5/6/7/15/16，STBY=17，I2C SDA=8/SCL=9，OE=10，电池 ADC=GPIO1）。
-4. 用 `wall-e_esp32_calibration/` 标定后把 `preset` 贴回主 sketch；沿用同一块 60Hz 舵机板和机械结构时，UNO 版的 `preset` 值可直接复用。
-5. 上传后串口协议与 UNO 版**完全一致**，`web_interface/` 无需任何改动，只需把 `local_config.py` 的串口指向 ESP32-S3 的端口。
+4. 用 `archive/wall-e_esp32/wall-e_esp32_calibration/` 标定后把 `preset` 贴回主 sketch；沿用同一块 60Hz 舵机板和机械结构时，UNO 版的 `preset` 值可直接复用。
+5. 上传后串口协议与 UNO 版**完全一致**，`archive/arduino-pi/web_interface/` 无需任何改动，只需把 `local_config.py` 的串口指向 ESP32-S3 的端口。
 
 #### ESP32-S3 内置 Web 控制端（可脱离树莓派）
-`wall-e_esp32/` 自带与 Flask 版路由兼容的 HTTP 服务器（`web_server.cpp`），Wi-Fi 遥控不再依赖树莓派：
-1. 编辑 `wall-e_esp32/web_config.h`：填 `WIFI_SSID`/`WIFI_PASSWORD` 走 STA 模式；留空则启动 AP 热点（默认 `WallE` / `walle1234`）。**不要把真实密码提交到 git**。
-2. 上传固件后，用 Arduino IDE 的 **LittleFS Data Upload** 插件把 `wall-e_esp32/data/` 上传到 LittleFS 分区（首次或前端变更时执行）。
+`archive/wall-e_esp32/wall-e_esp32/` 自带与 Flask 版路由兼容的 HTTP 服务器（`web_server.cpp`），Wi-Fi 遥控不再依赖树莓派：
+1. 编辑 `archive/wall-e_esp32/wall-e_esp32/web_config.h`：填 `WIFI_SSID`/`WIFI_PASSWORD` 走 STA 模式；留空则启动 AP 热点（默认 `WallE` / `walle1234`）。**不要把真实密码提交到 git**。
+2. 上传固件后，用 Arduino IDE 的 **LittleFS Data Upload** 插件把 `archive/wall-e_esp32/wall-e_esp32/data/` 上传到 LittleFS 分区（首次或前端变更时执行）。
 3. 浏览器访问 `http://<esp-ip>`（AP 模式为 `http://192.168.4.1`），登录密码同 `web_config.h`（默认 `walle`）。
 4. 已移植路由：`/`、`/login`、`/login_request`、`/motor`、`/settings`（motorOff/steerOff/animeMode/volume/streamer/restart）、`/animate`、`/servoControl`、`/arduinoConnect`（恒 Connected）、`/arduinoStatus`（电量）、`/gamepadStatus`（真实蓝牙手柄状态）、`/audio`（PCM5102 I2S 播放 wav）。HTTP 与 USB 串口共用 `evaluateCommand()`，行为一致。
 5. 尚未移植：`/tts`（云端 TTS，返回明确 Error）；BOM 扩展项（INMP441 麦克风、ASR-Pro 离线语音）。
 6. 显示屏（默认启用，`web_config.h` 的 `DISPLAYS_ENABLED`）：两块 GC9A01 圆屏做眼睛（矢量绘制，表情跟随 `i/j/k/l` 指令，2.5–6s 随机眨眼），一块 ST7789 做状态屏（电量/Wi-Fi/手柄/自动模式，1s 刷新）。三屏共用 SPI（SCK=21、MOSI=18，RST=47、BL=48 共接），各自 CS/DC 见 `web_config.h`。若 ST7789 画面偏移，调 `status_display.cpp` 构造函数的 offset 参数；眨眼动画期间 loop 有 ~40ms 阻塞，舵机控制由 dt 补偿，属正常。
 6. 蓝牙手柄：默认启用（`web_config.h` 的 `BT_GAMEPAD_ENABLED`），手柄进入配对模式即可连接；映射与 `gamepad.py` 一致（左摇杆行走、右摇杆头/颈、LT/RT 降臂、LB/RB 升臂、ABXY 眼部表情、Back 切自动模式、十字键随机音效/动画）。
-7. 摄像头（第二块 ESP32-S3-CAM）：编辑 `wall-e_esp32_cam/camera_pins.h` 选板型、在 sketch 顶部填 Wi-Fi 凭据（留空则连主控 `WallE` AP），烧录后从串口拿到 IP，填入 `wall-e_esp32/data/index.html` 顶部的 `stream_url`（如 `http://192.168.4.3/stream`），重新上传 LittleFS 数据。
-8. 前端 `data/index.html`/`login.html` 由 `web_interface/templates/` 去 Jinja 化生成（静态路径、`CODEBLOCK_*` 与音效列表为构建期烘焙值）；Pi 端模板改动后需重新生成（会覆盖 `stream_url` 行）。
+7. 摄像头（第二块 ESP32-S3-CAM）：编辑 `wall-e_esp32_cam/camera_pins.h` 选板型、在 sketch 顶部填 Wi-Fi 凭据（留空则连主控 `WallE` AP），烧录后从串口拿到 IP，填入 `archive/wall-e_esp32/wall-e_esp32/data/index.html` 顶部的 `stream_url`（如 `http://192.168.4.3/stream`），重新上传 LittleFS 数据。
+8. 前端 `data/index.html`/`login.html` 由 `archive/arduino-pi/web_interface/templates/` 去 Jinja 化生成（静态路径、`CODEBLOCK_*` 与音效列表为构建期烘焙值）；Pi 端模板改动后需重新生成（会覆盖 `stream_url` 行）。
 
 ### 4.2 树莓派 Web 服务
 
 #### 首次安装
 ```bash
 cd ~/walle-replica
-sudo chmod +x ./raspi-setup.sh
-sudo ./raspi-setup.sh
+sudo chmod +x ./archive/arduino-pi/raspi-setup.sh
+sudo ./archive/arduino-pi/raspi-setup.sh
 ```
 该脚本会：
 - 安装 `espeak-ng rubberband-cli python3-pygame python3-serial python3-flask python3-picamera2 python3-waitress`
 - 把当前用户加入 `input` 组（游戏手柄权限，需重启生效）
-- 将 `web_interface/walle.service` 复制到 `/etc/systemd/system/`，并替换模板中的 `username` 与 `/path-to-directory`
+- 将 `archive/arduino-pi/web_interface/walle.service` 复制到 `/etc/systemd/system/`，并替换模板中的 `username` 与 `/path-to-directory`
 - 启用并启动 `walle.service`
 
 #### 手动运行（调试用）
@@ -203,22 +197,22 @@ setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 
 下标含义：`0=head`、`1=necT`、`2=necB`、`3=eyeR`、`4=eyeL`、`5=armL`、`6=armR`、`7=broL`、`8=broR`。
 
-**ESP32-S3 版**（`wall-e_esp32/`）在上述逻辑关节顺序与 PWM 板物理通道之间加了一层 `servoChannel[]` 映射（默认适配第三方线束：通道 `0=eyeL`、`1=eyeR`、`2=head`、`3=necT`、`4=necB`、`5=armL`、`6=armR`、`7=broL`、`8=broR`）。`preset`、`setpos`、动画、串口指令仍全部使用逻辑关节顺序；接线或线束不同时只需改 `servoChannel[]` 一个数组（标定 sketch 内有同一张表）。
+**ESP32-S3 版**（`archive/wall-e_esp32/wall-e_esp32/`）在上述逻辑关节顺序与 PWM 板物理通道之间加了一层 `servoChannel[]` 映射（默认适配第三方线束：通道 `0=eyeL`、`1=eyeR`、`2=head`、`3=necT`、`4=necB`、`5=armL`、`6=armR`、`7=broL`、`8=broR`）。`preset`、`setpos`、动画、串口指令仍全部使用逻辑关节顺序；接线或线束不同时只需改 `servoChannel[]` 一个数组（标定 sketch 内有同一张表）。
 
 ### 6.5 新增指令的约定
 
 **新增电机/舵机指令必须三处同步**：
 1. `app.py` 增加 Flask 路由，调用 `arduino.send_command("前缀" + str(值))`。
-2. `wall-e/wall-e.ino` 的 `evaluateSerial()` 增加 `else if (firstChar == '?')` 分支。
-3. `web_interface/static/js/main.js` 增加前端交互（按钮/摇杆/滑杆）。
+2. `archive/arduino-pi/wall-e/wall-e.ino` 的 `evaluateSerial()` 增加 `else if (firstChar == '?')` 分支。
+3. `archive/arduino-pi/web_interface/static/js/main.js` 增加前端交互（按钮/摇杆/滑杆）。
 
 避开已占用前缀（见上表），否则硬件不会响应或行为错乱。完整协议细节见 `docs/SERIAL_PROTOCOL.md`。
 
 ## 7. 关键配置文件
 
-- **`web_interface/config.py`**：默认配置。键名全大写，覆盖 Web 端口、登录密码、默认串口、是否自动连接 Arduino/摄像头、TTS 命令、音效文件夹、CodeBlocks 电机参数、游戏手柄参数等。
-- **`web_interface/local_config.py`**：可选本地覆盖文件，**已加入 `.gitignore`**。本地密码、API Key、端口等敏感或环境相关改动应写在这里，不要直接修改 `config.py`。
-- **`web_interface/walle.service`**：systemd 服务模板，含占位符 `username` 与 `/path-to-directory`，由 `raspi-setup.sh` 替换。
+- **`archive/arduino-pi/web_interface/config.py`**：默认配置。键名全大写，覆盖 Web 端口、登录密码、默认串口、是否自动连接 Arduino/摄像头、TTS 命令、音效文件夹、CodeBlocks 电机参数、游戏手柄参数等。
+- **`archive/arduino-pi/web_interface/local_config.py`**：可选本地覆盖文件，**已加入 `.gitignore`**。本地密码、API Key、端口等敏感或环境相关改动应写在这里，不要直接修改 `config.py`。
+- **`archive/arduino-pi/web_interface/walle.service`**：systemd 服务模板，含占位符 `username` 与 `/path-to-directory`，由 `raspi-setup.sh` 替换。
 - **`raspi-setup.sh`**：树莓派首次安装与自启脚本。
 
 ## 8. 代码风格与开发约定
@@ -264,16 +258,18 @@ setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 
 ## 11. 路线图中尚未实现的模块（重要）
 
+> 语音交互主线已由小智固件（`wall-e_xiaozhi/`）实现（唤醒词 + 云端 LLM + MCP 动作工具）；本节列出的是**树莓派侧**语音/视觉管线，仍是计划中的备选/远期功能。
+
 `docs/VOICE_LLM_PLAN.md` 与 `docs/REID_FOLLOW_PLAN.md` 描述的是**计划中的功能**，对应源码文件目前**不存在**：
 
-- `web_interface/vision_tracker.py`
-- `web_interface/robot_brain.py`
-- `web_interface/follow_controller.py`
-- `web_interface/voice_agent.py`
-- `web_interface/voice_llm.py`
-- `web_interface/robot_tools.py`
-- `web_interface/reid_tracker.py`
-- `web_interface/gait_features.py`
+- `archive/arduino-pi/web_interface/vision_tracker.py`
+- `archive/arduino-pi/web_interface/robot_brain.py`
+- `archive/arduino-pi/web_interface/follow_controller.py`
+- `archive/arduino-pi/web_interface/voice_agent.py`
+- `archive/arduino-pi/web_interface/voice_llm.py`
+- `archive/arduino-pi/web_interface/robot_tools.py`
+- `archive/arduino-pi/web_interface/reid_tracker.py`
+- `archive/arduino-pi/web_interface/gait_features.py`
 - `models/face_detector.tflite`
 - `models/mobilefacenet.tflite`
 
@@ -283,14 +279,17 @@ setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 
 | 动作 | 命令 |
 |------|------|
-| 手动启动 Web 服务 | `python3 web_interface/app.py` |
-| 首次安装/自启 | `sudo ./raspi-setup.sh` |
+| 手动启动 Web 服务 | `python3 archive/arduino-pi/web_interface/app.py` |
+| 首次安装/自启 | `sudo ./archive/arduino-pi/raspi-setup.sh` |
 | 查看服务状态 | `sudo systemctl status walle.service` |
 | 查看串口 | `dmesg \| grep tty` |
-| 编辑配置（推荐） | `nano web_interface/local_config.py` |
+| 编辑配置（推荐） | `nano archive/arduino-pi/web_interface/local_config.py` |
 | Arduino 串口波特率 | 115200 |
 | 视频流地址 | `http://<pi-ip>:8080/stream.mjpg` |
 | Web 界面地址 | `http://<pi-ip>:5000` |
+| 小智固件构建 | `cd wall-e_xiaozhi && idf.py build` |
+| 小智固件烧录+日志 | `idf.py -p COMx flash monitor` |
+| 小智 Web 控制面板 | `http://<esp-ip>`（80 端口，无鉴权） |
 
 ## 13. 参考文档
 
@@ -298,5 +297,6 @@ setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 - `docs/SERIAL_PROTOCOL.md`：串口协议细节
 - `docs/WIRING.md`：Arduino 与舵机板/电机板接线
 - `docs/HARDWARE.md`：硬件采购清单
-- `docs/VOICE_LLM_PLAN.md`：语音 + LLM 接入方案
+- `docs/XIAOZHI_MIGRATION.md`：小智语音迁移（构建、引脚、MCP 工具、Web 面板、服务端切换）
+- `docs/VOICE_LLM_PLAN.md`：语音 + LLM 接入方案（树莓派侧备选）
 - `docs/REID_FOLLOW_PLAN.md`：Re-ID 目标跟随方案

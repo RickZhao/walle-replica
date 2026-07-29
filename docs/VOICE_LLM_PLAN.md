@@ -1,5 +1,7 @@
 # 接入语音大模型 实施方案
 
+> **状态（2026-07）**：本文档是**树莓派侧**的语音方案（备选）。当前语音主线已改为小智单 MCU 方案（`wall-e_xiaozhi/`，已实现唤醒词 + 云端 LLM + MCP 动作工具，见 `docs/XIAOZHI_MIGRATION.md`）。本文档仍有效：① 若回退到树莓派方案可直接按此实施；② 其中火山方舟 LLM 函数调用设计同样适用于自建小智服务端（xiaozhi-esp32-server）接豆包的场景。文中提到的 `voice_agent.py` 等文件**尚未实现**。
+
 ## 目标与范围
 
 把 `voice_agent.py` 现有的「关键词匹配」升级为「唤醒词 → ASR → 火山方舟豆包 LLM（函数调用）→ TTS」的完整语音对话管线，让 Wall-E 能用中文自然对话并按语义直接控制动作。
@@ -46,12 +48,12 @@
 
 | 文件 | 动作 | 说明 |
 |------|------|------|
-| `web_interface/voice_llm.py` | 新增 | `VoiceLLMAgent`：唤醒线程 + 对话状态机 + LLM 客户端 + 工具循环 + 生命周期 |
-| `web_interface/robot_tools.py` | 新增 | 工具 schema（OpenAI function 格式）+ `ToolDispatcher`：工具名/参数 → `arduino.send_command` + 共享 behavior |
-| `web_interface/voice_agent.py` | 修改 | 抽出 `transcribe_pcm(pcm_bytes, sample_rate)` 接受原始 PCM 做 ASR（不再独占麦克风）；保留 `listen()`/`speak()` 供 push-to-talk 回退路径 |
-| `web_interface/config.py` | 修改 | 新增 `LLM_*` / `WAKE_WORD_*` 段（全大写键名 + 注释，沿用现有风格） |
-| `web_interface/app.py` | 修改 | 实例化 `VoiceLLMAgent`、启动/关闭后台线程、新增 `/voiceStatus` `/voiceToggle` 路由 |
-| `web_interface/templates/index.html` + `static/js/main.js` | 修改（最小） | 设置页加「语音对话」开关 + 状态点 |
+| `archive/arduino-pi/web_interface/voice_llm.py` | 新增 | `VoiceLLMAgent`：唤醒线程 + 对话状态机 + LLM 客户端 + 工具循环 + 生命周期 |
+| `archive/arduino-pi/web_interface/robot_tools.py` | 新增 | 工具 schema（OpenAI function 格式）+ `ToolDispatcher`：工具名/参数 → `arduino.send_command` + 共享 behavior |
+| `archive/arduino-pi/web_interface/voice_agent.py` | 修改 | 抽出 `transcribe_pcm(pcm_bytes, sample_rate)` 接受原始 PCM 做 ASR（不再独占麦克风）；保留 `listen()`/`speak()` 供 push-to-talk 回退路径 |
+| `archive/arduino-pi/web_interface/config.py` | 修改 | 新增 `LLM_*` / `WAKE_WORD_*` 段（全大写键名 + 注释，沿用现有风格） |
+| `archive/arduino-pi/web_interface/app.py` | 修改 | 实例化 `VoiceLLMAgent`、启动/关闭后台线程、新增 `/voiceStatus` `/voiceToggle` 路由 |
+| `archive/arduino-pi/web_interface/templates/index.html` + `static/js/main.js` | 修改（最小） | 设置页加「语音对话」开关 + 状态点 |
 | `raspi-setup.sh` | 修改 | `pip install openai openwakeword sounddevice numpy`（与现有 mediapipe 等一起注明） |
 
 ## 配置新增（config.py）
@@ -160,7 +162,7 @@ API Key、接入点 ID 写 `local_config.py`（已 gitignore），不进 `config
 
 ## 测试（仓库无测试套件，手动冒烟）
 
-1. `python3 web_interface/voice_llm.py` 自检模式：跳过唤醒，直接文本输入 → LLM → 工具执行 → 打印指令。
+1. `python3 archive/arduino-pi/web_interface/voice_llm.py` 自检模式：跳过唤醒，直接文本输入 → LLM → 工具执行 → 打印指令。
 2. 接 Arduino：喊唤醒词 → 说「挥挥手」→ 观察 `wave_arm` 下发 `L80`/`R80` + TTS 回复。
 3. 说「停下来」→ `stop_move`。
 4. 说「看左边」→ `move_head`。

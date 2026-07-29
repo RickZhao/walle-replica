@@ -3,9 +3,9 @@ __pycache__
 .sublime.project
 .sublime-workspace
 .local_config.py
-web_interface/local_config.py
-web_interface/__pycache__/wsgi.cpython-311.pyc
-web_interface/__pycache__/web_interface.cpython-311.pyc
+archive/arduino-pi/web_interface/local_config.py
+archive/arduino-pi/web_interface/__pycache__/wsgi.cpython-311.pyc
+archive/arduino-pi/web_interface/__pycache__/web_interface.cpython-311.pyc
 walle-webinterface.sublime-workspace
 walle-webinterface.sublime-project
 __pycache__/wsgi.cpython-311.pyc
@@ -25,3 +25,9 @@ _autosave-*
 
 # Kimi Code local project config
 .kimi-code/
+
+# ESP-IDF build artifacts (xiaozhi-esp32 vendored tree)
+wall-e_xiaozhi/build/
+wall-e_xiaozhi/managed_components/
+wall-e_xiaozhi/sdkconfig
+wall-e_xiaozhi/sdkconfig.old

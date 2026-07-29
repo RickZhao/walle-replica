@@ -3,7 +3,21 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/chillibasket/walle-replica.svg?style=flat)](https://github.com/chillibasket/walle-replica/commits/master)
 
 # Wall-E 机器人复刻版
-Wall-E 复刻版机器人的控制代码与控制器代码。关于该机器人的更多信息，请访问 https://wired.chillibasket.com/3d-printed-wall-e/
+Wall-E 复刻版机器人的控制代码与控制器代码。关于该机器人的更多信息，请访问 https://wired.chillibasket.com/3d-printed-archive/arduino-pi/wall-e/
+
+<br />
+
+> **本仓库（fork）在上游基础上新增了三套固件与自制硬件：**
+>
+> | 目录 | 框架 | 说明 |
+> |------|------|------|
+> | `wall-e_xiaozhi/` | ESP-IDF | **主线**：单块 ESP32-S3 语音机器人（小智方案：唤醒词 + 云端 LLM + MCP 动作工具 + GC9A01 眼睛 + Web 控制面板），详见 `docs/XIAOZHI_MIGRATION.md` |
+> | `archive/wall-e_esp32/wall-e_esp32/` | Arduino (ESP32-S3) | ESP32 单机版：内置 Web 控制端、I2S 音频、蓝牙手柄、双 GC9A01 眼睛 + ST7789 状态屏。**已冻结**（保留作回退） |
+> | `wall-e_esp32_cam/` | Arduino (ESP32-S3-CAM) | 第二块 ESP32-S3-CAM 的 MJPEG 推流固件 |
+> | `hardware/walle-shield/` | KiCad 10 | 模块化背板 PCB，替代杜邦线飞线 |
+> | `hardware/` | — | 第三方 ESP32-S3 方案 BOM 分析（`另一套硬件方案.md`） |
+>
+> 下文的原始方案（Arduino UNO `archive/arduino-pi/wall-e/` + 树莓派 `archive/arduino-pi/web_interface/`）仍在维护。中文技术文档见 `docs/`（串口协议、接线、硬件清单、小智迁移记录等）。
 
 <br />
 <br />
@@ -73,12 +87,12 @@ Web 界面使用 Python 编写，基于 *Flask* 搭建服务器。树莓派通�
 1. 从 GitHub 仓库下载/克隆 "wall-e_calibration" 文件夹。
 1. 在 Arduino IDE 中打开 `wall-e_calibration.ino`。
 1. 上传程序到微控制器，打开串口监视器，波特率设为 115200。
-1. 该程序用于标定每个舵机在期望行程内所需的最大和最小 PWM 脉冲长度。各舵机标准的 LOW 和 HIGH 位置可参见[作者网站上的](https://wired.chillibasket.com/3d-printed-wall-e/)示意图。
+1. 该程序用于标定每个舵机在期望行程内所需的最大和最小 PWM 脉冲长度。各舵机标准的 LOW 和 HIGH 位置可参见[作者网站上的](https://wired.chillibasket.com/3d-printed-archive/arduino-pi/wall-e/)示意图。
 1. 启动程序并打开串口监视器后，2–3 秒后会提示已准备好标定第一个舵机（头部旋转）的 LOW 位置。
 1. 发送字符 'a' 和 'd' 让电机分别后退/前进 -10 和 +10；如需精细控制，用 'z' 和 'c' 移动 -1 和 +1。
 1. 电机到位后，发送字符 'n' 进入下一步，标定同一舵机的 HIGH 位置，随后对 7 个舵机依次重复该过程。
 1. 全部标定完成后，程序会向串口监视器输出包含标定值的数组。
-1. 复制该数组，粘贴到 *wall-e.ino* 程序的[第 144 行](https://github.com/chillibasket/walle-replica/blob/master/wall-e/wall-e.ino#L144)至 150 行之间。数组格式如下：
+1. 复制该数组，粘贴到 *wall-e.ino* 程序的[第 144 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/wall-e/wall-e.ino#L144)至 150 行之间。数组格式如下：
     ```cpp
     int preset[][2] =  {{410,120},  // head rotation
                         {532,178},  // neck top
@@ -94,7 +108,7 @@ Web 界面使用 Python 编写，基于 *Flask* 搭建服务器。树莓派通�
 #### [d] 电池电量检测（可选）
 使用电池供电时，跟踪剩余电量很重要。某些电池过放会损坏；若供电不足，树莓派的 SD 卡可能损坏。
 1. 要在 Arduino 上启用电池电量检测，按下图连接电阻与接线。电阻（分压电路）将 12V 电压降至 5V 以下，确保 Arduino 可用模拟引脚安全测量。推荐电阻值为 `R1 = 100kΩ`、`R2 = 47kΩ`。
-1. 在主程序 *wall-e.ino* 中取消[第 54 行](https://github.com/chillibasket/walle-replica/blob/master/wall-e/wall-e.ino#L54) `#define BAT_L` 的注释。
+1. 在主程序 *wall-e.ino* 中取消[第 54 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/wall-e/wall-e.ino#L54) `#define BAT_L` 的注释。
 1. 若使用不同的电阻值，按公式 `POT_DIV = R2 / (R1 + R2)` 修改程序第 54 行的分压增益系数。
 1. 程序现在会每 10 秒自动检测一次电池电量，并在树莓派 Web 界面的“Status”区域显示。
 
@@ -111,8 +125,8 @@ Web 界面使用 Python 编写，基于 *Flask* 搭建服务器。树莓派通�
     1. 进入 工具 → 包含库 → 管理库…（Sketch -> Include Library -> Manage Libraries...）
     1. 搜索 *U8g2*，发布者为 "oliver"。
     1. 安装最新版本。
-1. 在主程序 *wall-e.ino* 中取消[第 74 行](https://github.com/chillibasket/walle-replica/blob/master/wall-e/wall-e.ino#L74) `#define OLED` 的注释。
-1. 若使用库支持的其他显示屏，可按[库参考页](https://github.com/olikraus/u8g2/wiki/u8g2setupcpp#constructor-reference)修改[第 78 行](https://github.com/chillibasket/walle-replica/blob/master/wall-e/wall-e.ino#L78)的构造函数。默认构造针对 SH1106_128X64_NONAME 显示屏。
+1. 在主程序 *wall-e.ino* 中取消[第 74 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/wall-e/wall-e.ino#L74) `#define OLED` 的注释。
+1. 若使用库支持的其他显示屏，可按[库参考页](https://github.com/olikraus/u8g2/wiki/u8g2setupcpp#constructor-reference)修改[第 78 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/wall-e/wall-e.ino#L78)的构造函数。默认构造针对 SH1106_128X64_NONAME 显示屏。
 
 ![](/images/oLed_circuit.jpg)
 <br />
@@ -166,18 +180,18 @@ git clone https://github.com/chillibasket/walle-replica.git
 
 > [!NOTE]
 > 可通过编辑 "config.py" 配置 Web 界面设置：
-> * 打开配置文件：`nano ~/walle-replica/web_interface/config.py`
-> * [第 14 行](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L14)可修改 Web 界面密码，默认密码为 "walle"。
-> * [第 15 行](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L15)可设置连接 Arduino 的默认串口，用 `dmseg | grep tty` 命令可列出所有已连接的串口。
-> * [第 16 行](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L16)和[第 17 行](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L17)可配置启动 Web 服务器时是否自动连接 Arduino 和摄像头。
+> * 打开配置文件：`nano ~/walle-replica/archive/arduino-pi/web_interface/config.py`
+> * [第 14 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L14)可修改 Web 界面密码，默认密码为 "walle"。
+> * [第 15 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L15)可设置连接 Arduino 的默认串口，用 `dmseg | grep tty` 命令可列出所有已连接的串口。
+> * [第 16 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L16)和[第 17 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L17)可配置启动 Web 服务器时是否自动连接 Arduino 和摄像头。
 
 <br />
 
 4. 配置完成后，运行安装脚本，它会自动安装所有依赖库（注意——这可能需要一些时间）：
 ```shell
 cd ~/walle-replica
-sudo chmod +x ./raspi-setup.sh
-sudo ./raspi-setup.sh
+sudo chmod +x ./archive/arduino-pi/raspi-setup.sh
+sudo ./archive/arduino-pi/raspi-setup.sh
 ```
 
 <br />
@@ -198,14 +212,14 @@ sudo ./raspi-setup.sh
 > * 重新启用开机自启：`sudo systemd enable walle.service`
 > * 服务停止后再次启动：`sudo systemd start walle.service`
 > * 查看服务状态与错误：`sudo systemd status walle.service`
-> * 如需手动从终端运行 Web 服务器（例如排查错误）：`python3 ~/walle-replica/web_interface/app.py`，按 `CTRL + C` 停止。
+> * 如需手动从终端运行 Web 服务器（例如排查错误）：`python3 ~/walle-replica/archive/arduino-pi/web_interface/app.py`，按 `CTRL + C` 停止。
 
 <br />
 
 #### [d] 使用 Blocky 控制机器人（贡献者：[dkrey](https://github.com/dkrey)）
 自 3.0 版起，Web 界面新增一个标签页，可用拖拽脚本语言控制机器人。从左侧栏拖动想要的动作到编辑区即可，例如驱动 Wall-E、控制执行器、播放音频。这是让孩子在玩中学习编程基础的好方式！
 
-驱动电机的命令可能需要调整 "config.py" 底部[第 25 行](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L25)至[第 28 行](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L28)的参数，以确保速度和转向量正确。
+驱动电机的命令可能需要调整 "config.py" 底部[第 25 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L25)至[第 28 行](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L28)的参数，以确保速度和转向量正确。
 
 <br />
 
@@ -219,8 +233,8 @@ Web 服务器自动支持任何通过排线连接到树莓派 CSI 接口的摄�
 1. 默认情况下，树莓派会自动选择从 HDMI 口还是耳机口输出音频。可用以下命令强制始终使用耳机口：`amixer cset numid=3 1`
 1. 确保所有音效文件为 `*.wav` 格式，大多数音乐/音频编辑器都能转换。
 1. 文件名按以下格式命名：`[组名]_[文件名]_[时长毫秒].wav`，例如 `voice_eva_1200.wav`。Web 界面会按“组名”分组并按字母排序显示。
-1. 将音效文件上传到树莓派：`~/walle-replica/web_interface/static/sounds/`
-1. 刷新页面后文件应出现在 Web 界面。若未出现，可能需要修改文件夹权限：`sudo chmod -R 755 ~/walle-replica/web_interface/static/sounds`
+1. 将音效文件上传到树莓派：`~/walle-replica/archive/arduino-pi/web_interface/static/sounds/`
+1. 刷新页面后文件应出现在 Web 界面。若未出现，可能需要修改文件夹权限：`sudo chmod -R 755 ~/walle-replica/archive/arduino-pi/web_interface/static/sounds`
 
 <br />
 

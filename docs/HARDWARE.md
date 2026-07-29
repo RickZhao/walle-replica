@@ -1,8 +1,8 @@
 # Wall-E 复刻版 硬件采购清单
 
-本清单按子系统分组，标注 **必需 / 可选 / 新功能所需**。基础搭建照第 1–3 节即可；要把 `web_interface/` 下那套半成品的视觉跟随 / 语音交互（`vision_tracker.py`、`robot_brain.py`、`follow_controller.py`、`voice_agent.py`）跑起来，再加第 4–5 节。
+本清单按子系统分组，标注 **必需 / 可选 / 新功能所需**。基础搭建照第 1–3 节即可；要把 `archive/arduino-pi/web_interface/` 下那套半成品的视觉跟随 / 语音交互（`vision_tracker.py`、`robot_brain.py`、`follow_controller.py`、`voice_agent.py`）跑起来，再加第 4–5 节。
 
-> 代码依据：`wall-e/wall-e.ino`（引脚映射、`NUMBER_OF_SERVOS = 7`、`BATTERY_MAX_VOLTAGE = 12.6`）、`web_interface/config.py`（`VISION_*` / `FOLLOW_*` / `VOICE_*` 段）、`README.md`（CSI 摄像头、3S 电池、分压电阻）。
+> 代码依据：`archive/arduino-pi/wall-e/wall-e.ino`（引脚映射、`NUMBER_OF_SERVOS = 7`、`BATTERY_MAX_VOLTAGE = 12.6`）、`archive/arduino-pi/web_interface/config.py`（`VISION_*` / `FOLLOW_*` / `VOICE_*` 段）、`README.md`（CSI 摄像头、3S 电池、分压电阻）。
 
 ---
 
@@ -106,7 +106,7 @@
 
 ## 9. 结构
 
-- 3D 打印件来自 [wired.chillibasket.com/3d-printed-wall-e](https://wired.chillibasket.com/3d-printed-wall-e/)（原作者图纸，与舵机位、电机位完全匹配，建议直接用）。
+- 3D 打印件来自 [wired.chillibasket.com/3d-printed-wall-e](https://wired.chillibasket.com/3d-printed-archive/arduino-pi/wall-e/)（原作者图纸，与舵机位、电机位完全匹配，建议直接用）。
 
 ---
 

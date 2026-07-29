@@ -1,0 +1,10 @@
+{
+    "type": "walle",
+    "target": "esp32s3",
+    "builds": [
+        {
+            "name": "walle",
+            "sdkconfig_append": []
+        }
+    ]
+}

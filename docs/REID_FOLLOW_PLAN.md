@@ -1,5 +1,7 @@
 # 目标再识别 (Re-ID) 跟随方案
 
+> **状态（2026-07）**：纯设计文档，**未实现**。该方案依赖树莓派 + 摄像头（`vision_tracker.py` 等文件均不存在）；当前主线小智固件（`wall-e_xiaozhi/`）也不含视觉跟随能力，远期需借助第二块 ESP32-S3-CAM（`wall-e_esp32_cam/`）或回退树莓派方案落地。
+
 ## 目标与范围
 
 把 `vision_tracker.py`（计划中）的「人脸**检测**」升级为「目标**再识别 (Re-ID)**」：让 Wall-E 锁定**一个**人后，在目标转头、被遮挡、短暂消失后仍能继续跟**同一个**人。属于 `docs/VOICE_LLM_PLAN.md` 里 **Phase 2 视觉接入**的设计细化，本期不写代码，仅定方案。
@@ -55,11 +57,11 @@ Re-ID 层包装在 `VisionTracker` 上（或新增 `ReIDTracker`），**对下�
 
 | 文件 | 动作 | 说明 |
 |------|------|------|
-| `web_interface/reid_tracker.py` | 新增 | `ReIDTracker`：bbox 轨迹 + 人脸匹配 + 身体匹配 + 融合决策，包装 `VisionTracker` |
-| `web_interface/gait_features.py` | 新增 | 步态特征提取（步频/步幅/摆幅/起伏）+ 模板最近邻 |
-| `web_interface/vision_tracker.py` | 修改（计划中模块） | 暴露检测/姿态原始结果供 Re-ID 复用；`track()` 增 `track_id/confidence/source` |
-| `web_interface/config.py` | 修改 | 新增 `VISION_REID_*` / `VISION_GAIT_*` 段（见下） |
-| `web_interface/robot_brain.py` | 修改（计划中模块） | `SEARCH` 加超时重识别窗口、`T1/T2` 转 `IDLE` 清 reference |
+| `archive/arduino-pi/web_interface/reid_tracker.py` | 新增 | `ReIDTracker`：bbox 轨迹 + 人脸匹配 + 身体匹配 + 融合决策，包装 `VisionTracker` |
+| `archive/arduino-pi/web_interface/gait_features.py` | 新增 | 步态特征提取（步频/步幅/摆幅/起伏）+ 模板最近邻 |
+| `archive/arduino-pi/web_interface/vision_tracker.py` | 修改（计划中模块） | 暴露检测/姿态原始结果供 Re-ID 复用；`track()` 增 `track_id/confidence/source` |
+| `archive/arduino-pi/web_interface/config.py` | 修改 | 新增 `VISION_REID_*` / `VISION_GAIT_*` 段（见下） |
+| `archive/arduino-pi/web_interface/robot_brain.py` | 修改（计划中模块） | `SEARCH` 加超时重识别窗口、`T1/T2` 转 `IDLE` 清 reference |
 | `models/mobilefacenet.tflite` | 新增 | 人脸 embedding 模型（需另行获取，见风险） |
 
 ## 配置新增（config.py）
@@ -173,7 +175,7 @@ Pi5 有余量可上更重 embedding/步态模型；Coral 须重编（见风险�
 
 ## 测试（仓库无测试套件，手动冒烟）
 
-1. `python3 web_interface/reid_tracker.py --self-check`：喂一段视频/摄像头 -> 打印每帧决策（face/body/gait 命中、confidence、source）。
+1. `python3 archive/arduino-pi/web_interface/reid_tracker.py --self-check`：喂一段视频/摄像头 -> 打印每帧决策（face/body/gait 命中、confidence、source）。
 2. 单人锁定后转身背对：应继续跟随（body 命中）；转回正面应回 face 命中。
 3. 锁定后第二人入场横穿：不换目标。
 4. 目标走出画面 > T1：进 `SEARCH`；3s 内回画面：恢复 `FOLLOW`；> T2：回 `IDLE` 清 ref。

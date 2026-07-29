@@ -1,6 +1,6 @@
 # Wall-E 串口通信协议
 
-Arduino 固件（`wall-e/wall-e.ino`）与树莓派 Web 服务（`web_interface/app.py`）之间的串口通信契约。新增/修改指令必须遵守本文档，否则两端不对应、硬件不响应。
+Arduino 固件（`archive/arduino-pi/wall-e/wall-e.ino`）与树莓派 Web 服务（`archive/arduino-pi/web_interface/app.py`）之间的串口通信契约。新增/修改指令必须遵守本文档，否则两端不对应、硬件不响应。
 
 ## 传输层
 
@@ -87,7 +87,7 @@ Battery_<百分比>
 
 ## 舵机位置映射（0..100 -> 实际 PWM）
 
-舵机指令（`G/T/B/E/U/L/R/I/J`）的 `0..100` 是归一化位置，不是 PWM。Arduino 端按 `preset[][2]`（`wall-e.ino:159`，由 `wall-e_calibration/wall-e_calibration.ino` 标定得到）线性映射：
+舵机指令（`G/T/B/E/U/L/R/I/J`）的 `0..100` 是归一化位置，不是 PWM。Arduino 端按 `preset[][2]`（`wall-e.ino:159`，由 `archive/arduino-pi/wall-e_calibration/wall-e_calibration.ino` 标定得到）线性映射：
 
 ```
 setpos[i] = int( number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0] )

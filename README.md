@@ -3,7 +3,21 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/chillibasket/walle-replica.svg?style=flat)](https://github.com/chillibasket/walle-replica/commits/master)
 
 # Wall-E Robot Replica
-Robot and controller code for a Wall-E replica robot. For more information about the robot, visit https://wired.chillibasket.com/3d-printed-wall-e/
+Robot and controller code for a Wall-E replica robot. For more information about the robot, visit https://wired.chillibasket.com/3d-printed-archive/arduino-pi/wall-e/
+
+<br />
+
+> **This fork adds three extra firmwares and custom hardware on top of the upstream project:**
+>
+> | Path | Framework | Description |
+> |------|-----------|-------------|
+> | `wall-e_xiaozhi/` | ESP-IDF | **Mainline**: single ESP32-S3 voice robot based on xiaozhi-esp32 (wake word + cloud LLM + MCP motion tools + GC9A01 eyes + web control panel). See `docs/XIAOZHI_MIGRATION.md` |
+> | `archive/wall-e_esp32/wall-e_esp32/` | Arduino (ESP32-S3) | Standalone ESP32 port: built-in web server, I2S audio, Bluetooth gamepad, GC9A01 ×2 eyes + ST7789 status display. **Frozen** (kept as fallback) |
+> | `wall-e_esp32_cam/` | Arduino (ESP32-S3-CAM) | MJPEG camera streamer for a second ESP32-S3-CAM board |
+> | `hardware/walle-shield/` | KiCad 10 | Modular backplane PCB replacing dupont wiring |
+> | `hardware/` | — | Third-party ESP32-S3 BOM analysis (`另一套硬件方案.md`) |
+>
+> The original Arduino UNO (`archive/arduino-pi/wall-e/`) + Raspberry Pi (`archive/arduino-pi/web_interface/`) setup below is still fully maintained. Chinese docs live in `docs/` (serial protocol, wiring, hardware list, migration notes).
 
 <br />
 <br />
@@ -72,12 +86,12 @@ The web interface is programmed in Python and uses *Flask* to generate a server.
 1. Download/clone the folder "wall-e_calibration" from the GitHub repository
 1. Open `wall-e_calibration.ino` in the Arduino IDE.
 1. Upload the sketch to the micro-controller, and open the serial monitor and set the baud rate to 115200.
-1. The sketch is used to calibrate the maximum and minimum PWM pulse lengths required to move each servo motor across its desired range of motion. The standard LOW and HIGH positions of each of the servos can be seen on diagrams [on my website](https://wired.chillibasket.com/3d-printed-wall-e/). 
+1. The sketch is used to calibrate the maximum and minimum PWM pulse lengths required to move each servo motor across its desired range of motion. The standard LOW and HIGH positions of each of the servos can be seen on diagrams [on my website](https://wired.chillibasket.com/3d-printed-archive/arduino-pi/wall-e/). 
 1. When starting the sketch and opening the serial monitor, a message should appear after 2-3 seconds, saying that it is ready to calibrate the LOW position of the first servo motor (the head rotation).
 1. Send the character 'a' and 'd' to move the motor backwards and forwards by -10 and +10. For finer control, use the characters 'z' and 'c' to move the motor by -1 and +1. 
 1. Once the motor is in the correct position, send the character 'n' to proceed to the calibration step. It will move on to the HIGH position of the same servo, after which the process will repeat for each of the 7 servos in the robot.
 1. When all joints are calibrated, the sketch will output an array containing the calibration values to the serial monitor.
-1. Copy the array, and paste it into [lines 144](https://github.com/chillibasket/walle-replica/blob/master/wall-e/wall-e.ino#L144) to 150 of the program *wall-e.ino*. The array should look similar to this:
+1. Copy the array, and paste it into [lines 144](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/wall-e/wall-e.ino#L144) to 150 of the program *wall-e.ino*. The array should look similar to this:
     ```cpp
     int preset[][2] =  {{410,120},  // head rotation
                         {532,178},  // neck top
@@ -93,7 +107,7 @@ The web interface is programmed in Python and uses *Flask* to generate a server.
 #### [d] Battery Level Detection (Optional)
 When using batteries to power the robot, it is important to keep track of how much power is left. Some batteries may break if they are over-discharged, and the SD card of the Raspberry Pi may become corrupted if not enough power is delivered.
 1. To use the battery level detection feature on the Arduino, connect the following resistors and wiring as shown in the image below. The resistors (potential divider) reduce the 12V voltage down to a value below 5V, which is safe for the Arduino to measure using its analogue pins. The recommended resistor values are `R1 = 100kΩ` and `R2 = 47kΩ`.
-1. Uncomment [line 54](https://github.com/chillibasket/walle-replica/blob/master/wall-e/wall-e.ino#L54) `#define BAT_L` in the main Arduino sketch *wall-e.ino*.
+1. Uncomment [line 54](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/wall-e/wall-e.ino#L54) `#define BAT_L` in the main Arduino sketch *wall-e.ino*.
 1. If you are using different resistor values, change the value of the potential divider gain factor on line 54 of the sketch, according to the formula: `POT_DIV = R2 / (R1 + R2)`. 
 1. The program should now automatically check the battery level every 10 seconds, and this level will be shown on the Raspberry Pi web-interface in the "Status" section.
 
@@ -110,8 +124,8 @@ It is possible to integrate a small oLED display which will show the battery lev
     1. Go to Sketch -> Include Library -> Manage Libraries...
     1. Search for *U8gt*. The library publisher is "oliver".
     1. Install the latest version of the library.
-1. Uncomment [line 74](https://github.com/chillibasket/walle-replica/blob/master/wall-e/wall-e.ino#L74) `#define OLED` in the main Arduino sketch *wall-e.ino*.
-1. If you are using a different display that is supported by the library, you can change the constructor on [line 78](https://github.com/chillibasket/walle-replica/blob/master/wall-e/wall-e.ino#L78) as documented on the [library reference page](https://github.com/olikraus/u8g2/wiki/u8g2setupcpp#constructor-reference). The default is for an SH1106_128X64_NONAME display.
+1. Uncomment [line 74](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/wall-e/wall-e.ino#L74) `#define OLED` in the main Arduino sketch *wall-e.ino*.
+1. If you are using a different display that is supported by the library, you can change the constructor on [line 78](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/wall-e/wall-e.ino#L78) as documented on the [library reference page](https://github.com/olikraus/u8g2/wiki/u8g2setupcpp#constructor-reference). The default is for an SH1106_128X64_NONAME display.
 
 ![](/images/oLed_circuit.jpg)
 <br />
@@ -165,18 +179,18 @@ git clone https://github.com/chillibasket/walle-replica.git
 
 > [!NOTE]
 > You can configure the web-interface settings by editing the "config.py" file:
-> * Open the config file: `nano ~/walle-replica/web_interface/config.py`
-> * On line [14](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L14) you can change the password for the web interface. The default password is "walle"
-> * On line [15](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L15) the default serial port which is used to connect to the Arduino can be set. You can find a list of all the connected serial ports using the `dmseg | grep tty` command.
-> * On lines [16](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L16) and [17](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L17) you can configure whether the Arduino and camera should automatically connect when starting up the web server.
+> * Open the config file: `nano ~/walle-replica/archive/arduino-pi/web_interface/config.py`
+> * On line [14](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L14) you can change the password for the web interface. The default password is "walle"
+> * On line [15](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L15) the default serial port which is used to connect to the Arduino can be set. You can find a list of all the connected serial ports using the `dmseg | grep tty` command.
+> * On lines [16](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L16) and [17](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L17) you can configure whether the Arduino and camera should automatically connect when starting up the web server.
 
 <br />
 
 4. Once you have finished editing the configurations, run the installation script which sets up all the required libraries for you (note - this may take some time to complete):
 ```shell
 cd ~/walle-replica
-sudo chmod +x ./raspi-setup.sh
-sudo ./raspi-setup.sh
+sudo chmod +x ./archive/arduino-pi/raspi-setup.sh
+sudo ./archive/arduino-pi/raspi-setup.sh
 ```
 
 <br />
@@ -197,14 +211,14 @@ sudo ./raspi-setup.sh
 > * To reenable start on boot: `sudo systemd enable walle.service`
 > * To start the service after it has been stopped: `sudo systemd start walle.service`
 > * View the status of the service and check for errors: `sudo systemd status walle.service`
-> * If you want to manually run the web server from the terminal, for example to check for errors: `python3 ~/walle-replica/web_interface/app.py`. You can then press `CTRL + C` to stop the web server again.
+> * If you want to manually run the web server from the terminal, for example to check for errors: `python3 ~/walle-replica/archive/arduino-pi/web_interface/app.py`. You can then press `CTRL + C` to stop the web server again.
 
 <br />
 
 #### [d] Controlling the Robot using Blocky (Contributed by: [dkrey](https://github.com/dkrey))
 Since version 3.0, a new tab has been added to the web interface where the robot can be controlled using a drag-and-drop scripting language. Simply drag the actions you want to perform from the left sidebar and drop them into the editor area. For example you can drive Wall-E, move the actuators, and play audio sounds. This is a great way for kids to learn the basics of programming while having fun!
 
-For the commands which drive the motors, you may need to tune the parameters at the bottom of the "config.py" file on lines [25](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L25) to [28](https://github.com/chillibasket/walle-replica/blob/master/web_interface/config.py#L28) to make sure that the speed and turning amount is correct. 
+For the commands which drive the motors, you may need to tune the parameters at the bottom of the "config.py" file on lines [25](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L25) to [28](https://github.com/chillibasket/walle-replica/blob/master/archive/arduino-pi/web_interface/config.py#L28) to make sure that the speed and turning amount is correct. 
 
 <br />
 
@@ -218,8 +232,8 @@ The web server automatically supports any camera which connects to the CSI conne
 1. By default the Raspberry should automatically select whether to output audio to the HDMI port or the headphone jack. However, you can ensure that it always uses the headphone jack with the following command: `amixer cset numid=3 1`
 1. Make sure that all the sound files you want to use are of type `*.wav`. Most music/sound editors should be able to convert the sound file to this format.
 1. Change the file name so that it has the following format: `[group name]_[file name]_[length in milliseconds].wav`. For example: `voice_eva_1200.wav`. In the web-interface, the audio files will be grouped using the "group name" and sorted alphabetically.
-1. Upload the sound file to Raspberry Pi in the following folder: `~/walle-replica/web_interface/static/sounds/`
-1. All the files should appear in the web interface when you reload the page. If the files do not appear, you may need to change the privileges required to access the folder: `sudo chmod -R 755 ~/walle-replica/web_interface/static/sounds`
+1. Upload the sound file to Raspberry Pi in the following folder: `~/walle-replica/archive/arduino-pi/web_interface/static/sounds/`
+1. All the files should appear in the web interface when you reload the page. If the files do not appear, you may need to change the privileges required to access the folder: `sudo chmod -R 755 ~/walle-replica/archive/arduino-pi/web_interface/static/sounds`
 
 <br />
 

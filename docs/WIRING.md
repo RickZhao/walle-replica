@@ -1,6 +1,6 @@
 # Wall-E 接线指南
 
-Arduino UNO R3 与舵机控制板、电机控制板的接线。**所有引脚以 `wall-e/wall-e.ino` 的定义为唯一权威**，本文件逐条对照代码行号，便于核对。
+Arduino UNO R3 与舵机控制板、电机控制板的接线。**所有引脚以 `archive/arduino-pi/wall-e/wall-e.ino` 的定义为唯一权威**，本文件逐条对照代码行号，便于核对。
 
 实物接线图见 `images/wall-e_wiring_diagram.jpg`；电池检测电路见 `images/battery_level_circuit.jpg`；OLED 电路见 `images/oLed_circuit.jpg`。
 
@@ -334,7 +334,7 @@ UNO 板上标 `GND` 的脚通常有 **3 个**（电源区 2 个并排、模拟�
   - `--- Wall-E Control Sketch ---`
   - `Starting up the servo motors`
   - `Startup complete; entering main loop`
-- 舵机首次动作可能超出物理行程（未标定），先用 `wall-e_calibration/wall-e_calibration.ino` 标定 `preset[][2]` 再贴回 `wall-e.ino:144`。
+- 舵机首次动作可能超出物理行程（未标定），先用 `archive/arduino-pi/wall-e_calibration/wall-e_calibration.ino` 标定 `preset[][2]` 再贴回 `wall-e.ino:144`。
 
 ## 验证依据
 
