@@ -2,7 +2,7 @@
 
 > 本文档记录 Wall-E 机器人从 Arduino 固件迁移到小智 ESP-IDF 语音方案的全部信息：源码溯源、构建烧录、引脚、MCP 工具清单、控制面架构、Wi-Fi 配网与 4G 回退。
 >
-> 上游溯源：`wall-e_xiaozhi/` 目录 vendored 自 https://github.com/78/xiaozhi-esp32 ，上游 commit `e0074e9`（feat: add ESP32-S31-Korvo-1 Board support, v2.4.0），MIT 许可证（`wall-e_xiaozhi/LICENSE`）。同步上游时按该 commit 做三方比对；我们对上游仅有的侵入性修改是 `main/Kconfig.projbuild` 与 `main/CMakeLists.txt` 中各一段 `walle` 板型注册。
+> 上游溯源：`wall-e_xiaozhi/` 目录 vendored 自 https://github.com/78/xiaozhi-esp32 ，上游 commit `e0074e9`（feat: add ESP32-S31-Korvo-1 Board support, v2.4.0），MIT 许可证（`wall-e_xiaozhi/LICENSE`）。同步上游时按该 commit 做三方比对；我们对上游仅有的侵入性修改是 `main/Kconfig.projbuild` 与 `main/CMakeLists.txt` 中各一段 `walle` 板型注册（另在 `main/CMakeLists.txt` 的 `PRIV_REQUIRES` 加了 `esp_http_client`，供 walle 板型 MCP 工具调用摄像头模块 HTTP API），以及 `main/display/lcd_display.cc` 两处 2 行改动（`lv_obj_set_size(preview_image_, width_, height_)` 与 `lv_image_set_scale(..., 256 * width_ / ...)`，把 `SetPreviewImage` 预览从 1/2 屏放大到全屏，供摄像头照片/回放用，均带 `walle:` 注释）。
 
 ## 1. 架构总览
 
@@ -79,6 +79,8 @@ idf.py -p COMx flash monitor
 | `self.walle.eyes` | expression | neutral/sad/left/right 眼部表情 |
 | `self.walle.play_animation` | id (0-2) | 复位/开机眨眼/好奇观察 |
 | `self.walle.set_auto_mode` | on | 自主随机小动作 |
+| `self.walle.light` | brightness (0-100) | 照明灯亮度（PCA9685 通道 `LIGHT_PWM_CHANNEL`） |
+| `self.walle.camera` | action | photo（拍完自动眼睛屏预览）/record_start/record_stop/preview/replay/stop |
 | `self.battery.get_level` | — | 电量百分比 |
 
 ## 6. Web 控制面板（`walle_web_server.cc`，阶段 3）
@@ -91,9 +93,10 @@ esp_http_server 跑在 **80 端口**，路由契约与树莓派 Flask 版（`arc
 | `/motor` | POST | stickX, stickY (-1.0..1.0) | → `X`/`Y` 指令 |
 | `/settings` | POST | type, value | motorOff→`O`、steerOff→`S`、animeMode→`M`、restart→`esp_restart()`；volume 静默接受 |
 | `/animate` | POST | clip | → `A` 指令 |
-| `/servoControl` | POST | servo(G/T/B/E/U/L/R/I/J), value(0..100) | → 对应舵机指令 |
+| `/servoControl` | POST | servo(G/T/B/E/U/L/R/I/J/V), value(0..100) | → 对应舵机指令；`V`=照明灯亮度 |
 | `/arduinoStatus` | POST | type=battery | 返回电量 JSON |
 | `/gamepadStatus` | GET/POST | — | 恒报未连接（IDF 版暂无蓝牙手柄） |
+| `/camview` | POST | action=preview/replay/stop | 眼睛屏照片预览/录像回放（`walle_cam_viewer.cc`） |
 
 **注意**：无登录鉴权，仅限可信局域网使用。`/tts`、`/audio`（本地 wav）未移植（云端 TTS 替代）。
 
@@ -109,6 +112,17 @@ esp_http_server 跑在 **80 端口**，路由契约与树莓派 Flask 版（`arc
 4. 打开 Web 控制面板（`http://<esp-ip>`），"Camera" 区即显示实时画面；`stream_url` 留空时该区域自动隐藏。
 
 注意：语音 Opus 流与 MJPEG 同处 2.4GHz，开视频若导致语音卡顿，把 CAM 固件的 `CAM_FRAME_SIZE` 降到 QVGA 或提高 JPEG 压缩比（`CAM_JPEG_QUALITY`）。
+
+### 7.1 microSD 拍照/录像与眼睛屏预览/回放
+
+CAM 固件带 SD 卡（XIAO Sense 卡槽，FAT32）：`/capture` 拍照存 `/photos/`、`/record?action=start|stop` 录 MJPEG→AVI 存 `/videos/`、`/files` 列表、`/file?path=` 下载/删除（GET 支持 HTTP Range）。
+
+主控侧 `walle_cam_viewer.cc` 负责把 SD 卡内容搬上 GC9A01 眼睛屏：
+
+- **照片预览**：HTTP 拉取 JPEG → esp_new_jpeg 解码（宽高超 480px 自动 1/2^n 缩放）→ `LcdDisplay::SetPreviewImage()` 全屏显示，5s 后预览定时器自动恢复眼睛动画；语音"拍张照"成功后自动预览刚拍的照片。
+- **AVI 回放**：按 `/files` 找最新录像，Range 请求探测 RIFF 头（帧率取自 `avih.dwMicroSecPerFrame`）与尾部 `idx1` 索引，再逐帧 Range 拉取 → 解码 → 逐帧 `SetPreviewImage`（每帧重置预览定时器），按帧率节拍播放；结束/停止后恢复眼睛。连续 10 帧失败自动中止。
+- **触发方式**：语音工具 `self.walle.camera`（`preview`/`replay`/`stop`）、Web 面板 Preview/Replay/Stop view 按钮（`POST /camview`）；回放期间单击 BOOT 键停止（此时 BOOT 不切换对话状态）。
+- 预览/回放跑在独立 worker 任务（栈 8KB、优先级 4），忙时新的预览/回放请求会被拒绝；JPG/帧缓冲全部走 PSRAM。
 
 远期替代路线：主控直接挂摄像头（上游已含 `esp32-camera` 组件），配合拍照 MCP 工具让云端多模态 LLM 看图——属新开发，未实现。
 

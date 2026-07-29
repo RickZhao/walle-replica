@@ -23,14 +23,26 @@
  *    (e.g. "http://192.168.4.3/stream") and re-upload LittleFS data.
  *
  * Endpoints:
- *   /        -> plain text status page (module name + stream URL)
+ *   /        -> plain text status page (module name + stream URL + SD status)
  *   /stream  -> MJPEG stream (point the web interface here)
+ *   /capture -> take a photo, save JPEG to SD (/photos/IMG_nnnn.jpg)
+ *   /record?action=start|stop -> record MJPEG video as AVI (/videos/VID_nnnn.avi)
+ *   /files   -> JSON list of photos/videos on the SD card
+ *   /file?path=... -> download (GET) or delete (DELETE) a file
+ *
+ * SD card (XIAO ESP32-S3 Sense expansion board, microSD slot):
+ *   The slot is wired on-board via SPI (CS=2, SCK=7, MISO=8, MOSI=9) -
+ *   just insert a FAT32 microSD card, no extra wiring. Without a card
+ *   the stream keeps working; the SD endpoints return an error.
  */
 
 #include <WiFi.h>
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include "camera_pins.h"
+#include <SPI.h>
+#include <SD.h>
+#include "avi_writer.h"
 
 
 /// Wi-Fi configuration
@@ -47,6 +59,14 @@
 // Camera tuning
 #define CAM_FRAME_SIZE     FRAMESIZE_VGA   // 640x480; drop to FRAMESIZE_SVGA/QVGA if flaky
 #define CAM_JPEG_QUALITY   12              // 0-63, lower = better quality / larger frames
+
+// SD card (XIAO ESP32-S3 Sense expansion board microSD slot, SPI mode)
+#define CAM_SD_ENABLED     1    // set 0 to compile without SD support
+#define SD_CS_PIN          2
+#define SD_SCK_PIN         7
+#define SD_MISO_PIN        8
+#define SD_MOSI_PIN        9
+#define REC_FPS            15   // recording frame rate (VGA; drop if frames are skipped)
 
 
 // -------------------------------------------------------------------
@@ -87,18 +107,298 @@ static esp_err_t streamHandler(httpd_req_t *req) {
 }
 
 
+// -------------------------------------------------------------------
+/// SD card state (declared early: indexHandler reports SD/recording status)
+// -------------------------------------------------------------------
+
+#if CAM_SD_ENABLED
+static bool sd_ready = false;
+static volatile bool recording = false;
+#endif
+
+
 static esp_err_t indexHandler(httpd_req_t *req) {
 	String page = "Wall-E camera module is running.\n";
 	page += "MJPEG stream: http://" + WiFi.localIP().toString() + "/stream\n";
 	page += "Set this as stream_url in wall-e_esp32/data/index.html\n";
+#if CAM_SD_ENABLED
+	page += sd_ready ? "SD card: ready\n" : "SD card: NOT available (photo/video disabled)\n";
+	page += recording ? "Recording: yes\n" : "Recording: no\n";
+	page += "Endpoints: /capture, /record?action=start|stop, /files, /file?path=...\n";
+#endif
 	httpd_resp_set_type(req, "text/plain");
 	return httpd_resp_send(req, page.c_str(), page.length());
 }
 
 
+// -------------------------------------------------------------------
+/// SD card: photo capture, AVI recording, file browsing
+// -------------------------------------------------------------------
+
+#if CAM_SD_ENABLED
+
+// Recording state (driven by /record, worker task below)
+static volatile bool record_stop_request = false;
+static TaskHandle_t record_task = nullptr;
+static char record_path[40];
+static uint32_t record_frames = 0;
+static unsigned long record_start_ms = 0;
+
+
+static esp_err_t SendJson(httpd_req_t *req, const String& json) {
+	httpd_resp_set_type(req, "application/json");
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+	return httpd_resp_send(req, json.c_str(), json.length());
+}
+
+static esp_err_t SendSdError(httpd_req_t *req, const char* msg) {
+	return SendJson(req, String("{\"status\":\"Error\",\"msg\":\"") + msg + "\"}");
+}
+
+/// First free path like /photos/IMG_0007.jpg (collision-proof after deletes)
+static void NextSdPath(char* out, size_t size, const char* dir, const char* prefix, const char* ext) {
+	for (int i = 1; i < 10000; i++) {
+		snprintf(out, size, "%s/%s_%04d%s", dir, prefix, i, ext);
+		if (!SD.exists(out)) return;
+	}
+}
+
+/// Query parameter helper: /record?action=start -> "start"
+static bool QueryParam(httpd_req_t *req, const char* key, char* out, size_t out_size) {
+	size_t qlen = httpd_req_get_url_query_len(req);
+	if (qlen == 0 || qlen > 128) return false;
+	char query[129];
+	if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) return false;
+	return httpd_query_key_value(query, key, out, out_size) == ESP_OK;
+}
+
+/// Pixel dimensions of the configured frame size (compile-time, no sensor query)
+static void FrameDims(uint16_t* w, uint16_t* h) {
+	switch (CAM_FRAME_SIZE) {
+		case FRAMESIZE_QVGA: *w = 320;  *h = 240;  break;
+		case FRAMESIZE_SVGA: *w = 800;  *h = 600;  break;
+		case FRAMESIZE_XGA:  *w = 1024; *h = 768;  break;
+		case FRAMESIZE_UXGA: *w = 1600; *h = 1200; break;
+		case FRAMESIZE_VGA:
+		default:             *w = 640;  *h = 480;  break;
+	}
+}
+
+
+static esp_err_t CaptureHandler(httpd_req_t *req) {
+	if (!sd_ready) return SendSdError(req, "SD card not available");
+
+	camera_fb_t *fb = esp_camera_fb_get();
+	if (!fb) return SendSdError(req, "Frame grab failed");
+
+	char path[40];
+	NextSdPath(path, sizeof(path), "/photos", "IMG", ".jpg");
+	File f = SD.open(path, FILE_WRITE);
+	if (!f) {
+		esp_camera_fb_return(fb);
+		return SendSdError(req, "Cannot open file on SD");
+	}
+	size_t written = f.write(fb->buf, fb->len);
+	f.close();
+	esp_camera_fb_return(fb);
+
+	const char* name = strrchr(path, '/') + 1;
+	return SendJson(req, String("{\"status\":\"OK\",\"file\":\"") + name +
+		"\",\"size\":" + written + "}");
+}
+
+
+static void RecordTask(void*) {
+	File f = SD.open(record_path, FILE_WRITE);
+	if (!f) {
+		Serial.printf("Record: cannot open %s\n", record_path);
+	} else {
+		uint16_t w, h;
+		FrameDims(&w, &h);
+		AviWriter avi;
+		avi.Begin(f, w, h, REC_FPS);
+
+		const TickType_t interval = pdMS_TO_TICKS(1000 / REC_FPS);
+		TickType_t next = xTaskGetTickCount();
+		while (!record_stop_request) {
+			camera_fb_t *fb = esp_camera_fb_get();
+			if (fb) {
+				avi.AddFrame(fb->buf, fb->len);
+				record_frames++;
+				esp_camera_fb_return(fb);
+			}
+			// If the frame grab overran the interval this returns immediately
+			vTaskDelayUntil(&next, interval);
+		}
+		avi.Finalize();
+		f.close();
+		Serial.printf("Record: %s finalized, %lu frames\n", record_path, record_frames);
+	}
+	recording = false;
+	record_task = nullptr;
+	vTaskDelete(nullptr);
+}
+
+static esp_err_t RecordHandler(httpd_req_t *req) {
+	if (!sd_ready) return SendSdError(req, "SD card not available");
+
+	char action[8];
+	if (!QueryParam(req, "action", action, sizeof(action))) {
+		return SendSdError(req, "Missing action=start|stop");
+	}
+
+	if (strcmp(action, "start") == 0) {
+		if (recording) {
+			const char* name = strrchr(record_path, '/') + 1;
+			return SendJson(req, String("{\"status\":\"OK\",\"msg\":\"already recording\",\"file\":\"") + name + "\"}");
+		}
+		NextSdPath(record_path, sizeof(record_path), "/videos", "VID", ".avi");
+		record_frames = 0;
+		record_start_ms = millis();
+		record_stop_request = false;
+		recording = true;
+		if (xTaskCreate(RecordTask, "cam_record", 4096, nullptr, 5, &record_task) != pdPASS) {
+			recording = false;
+			return SendSdError(req, "Cannot start record task");
+		}
+		const char* name = strrchr(record_path, '/') + 1;
+		return SendJson(req, String("{\"status\":\"OK\",\"msg\":\"recording\",\"file\":\"") + name + "\"}");
+	}
+
+	if (strcmp(action, "stop") == 0) {
+		if (!recording) return SendSdError(req, "not recording");
+		record_stop_request = true;
+		// Wait for the task to finalize the AVI (max ~3s)
+		for (int i = 0; i < 300 && recording; i++) vTaskDelay(pdMS_TO_TICKS(10));
+		const char* name = strrchr(record_path, '/') + 1;
+		return SendJson(req, String("{\"status\":\"OK\",\"file\":\"") + name +
+			"\",\"frames\":" + record_frames +
+			",\"duration_ms\":" + (millis() - record_start_ms) + "}");
+	}
+
+	return SendSdError(req, "Unknown action, use start|stop");
+}
+
+
+static void AppendDirJson(String& json, const char* dir, bool* first) {
+	File d = SD.open(dir);
+	if (!d) return;
+	for (File f = d.openNextFile(); f; f = d.openNextFile()) {
+		if (f.isDirectory()) { f.close(); continue; }
+		const char* base = strrchr(f.name(), '/');
+		base = base ? base + 1 : f.name();
+		if (!*first) json += ",";
+		*first = false;
+		json += String("{\"path\":\"") + dir + "/" + base + "\",\"size\":" + f.size() + "}";
+		f.close();
+	}
+	d.close();
+}
+
+static esp_err_t FilesHandler(httpd_req_t *req) {
+	if (!sd_ready) return SendSdError(req, "SD card not available");
+	String json = "{\"status\":\"OK\",\"files\":[";
+	bool first = true;
+	AppendDirJson(json, "/photos", &first);
+	AppendDirJson(json, "/videos", &first);
+	json += "]}";
+	return SendJson(req, json);
+}
+
+
+/// Sanitize ?path= : must live under /photos/ or /videos/, no ".."
+static bool SanitizeSdPath(const char* in, char* out, size_t out_size) {
+	if (strlen(in) > out_size - 1) return false;
+	if (strstr(in, "..")) return false;
+	if (strncmp(in, "/photos/", 8) != 0 && strncmp(in, "/videos/", 8) != 0) return false;
+	strcpy(out, in);
+	return true;
+}
+
+static esp_err_t FileGetHandler(httpd_req_t *req) {
+	if (!sd_ready) return SendSdError(req, "SD card not available");
+	char param[64], path[64];
+	if (!QueryParam(req, "path", param, sizeof(param)) || !SanitizeSdPath(param, path, sizeof(path))) {
+		return SendSdError(req, "Bad path");
+	}
+	File f = SD.open(path, FILE_READ);
+	if (!f) return SendSdError(req, "File not found");
+
+	// HTTP Range support ("Range: bytes=start-end", end optional) for
+	// frame-exact video playback on the main controller
+	size_t file_size = f.size();
+	size_t range_start = 0, range_end = file_size - 1;
+	bool is_range = false;
+	char range_hdr[64];
+	if (httpd_req_get_hdr_value_str(req, "Range", range_hdr, sizeof(range_hdr)) == ESP_OK) {
+		unsigned long s = 0, e = 0;
+		if (sscanf(range_hdr, "bytes=%lu-%lu", &s, &e) >= 1 && s < file_size) {
+			is_range = true;
+			range_start = s;
+			range_end = (e == 0 || e >= file_size) ? file_size - 1 : e;
+			f.seek(range_start);
+		}
+	}
+
+	const char* base = strrchr(path, '/') + 1;
+	bool video = strstr(path, "/videos/") != nullptr;
+	httpd_resp_set_type(req, video ? "video/x-msvideo" : "image/jpeg");
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+	httpd_resp_set_hdr(req, "Accept-Ranges", "bytes");
+	String disp = String("attachment; filename=\"") + base + "\"";
+	httpd_resp_set_hdr(req, "Content-Disposition", disp.c_str());
+	if (is_range) {
+		httpd_resp_set_status(req, "206 Partial Content");
+		char cr[80];
+		snprintf(cr, sizeof(cr), "bytes %u-%u/%u",
+			(unsigned)range_start, (unsigned)range_end, (unsigned)file_size);
+		httpd_resp_set_hdr(req, "Content-Range", cr);
+	}
+
+	uint8_t buf[1024];
+	size_t pos = range_start;
+	while (pos <= range_end) {
+		size_t want = range_end - pos + 1;
+		if (want > sizeof(buf)) want = sizeof(buf);
+		int n = f.read(buf, want);
+		if (n <= 0) break;
+		pos += n;
+		if (httpd_resp_send_chunk(req, (const char*)buf, n) != ESP_OK) break;
+	}
+	f.close();
+	httpd_resp_send_chunk(req, nullptr, 0);
+	return ESP_OK;
+}
+
+static esp_err_t FileDeleteHandler(httpd_req_t *req) {
+	if (!sd_ready) return SendSdError(req, "SD card not available");
+	char param[64], path[64];
+	if (!QueryParam(req, "path", param, sizeof(param)) || !SanitizeSdPath(param, path, sizeof(path))) {
+		return SendSdError(req, "Bad path");
+	}
+	if (!SD.remove(path)) return SendSdError(req, "Delete failed");
+	return SendJson(req, "{\"status\":\"OK\"}");
+}
+
+static bool initSd() {
+	SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+	if (!SD.begin(SD_CS_PIN, SPI, 40000000)) {
+		Serial.println(F("SD card mount failed (photo/video disabled, stream still works)"));
+		return false;
+	}
+	if (!SD.exists("/photos")) SD.mkdir("/photos");
+	if (!SD.exists("/videos")) SD.mkdir("/videos");
+	Serial.printf("SD card mounted, %llu MB total\n", SD.totalBytes() / (1024 * 1024));
+	return true;
+}
+
+#endif // CAM_SD_ENABLED
+
+
 static void startStreamServer() {
 	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 	config.server_port = 80;
+	config.max_uri_handlers = 10;
 
 	httpd_handle_t server = nullptr;
 	if (httpd_start(&server, &config) != ESP_OK) {
@@ -110,6 +410,19 @@ static void startStreamServer() {
 	httpd_uri_t streamUri = {"/stream", HTTP_GET, streamHandler, nullptr};
 	httpd_register_uri_handler(server, &indexUri);
 	httpd_register_uri_handler(server, &streamUri);
+
+#if CAM_SD_ENABLED
+	httpd_uri_t captureUri = {"/capture", HTTP_GET, CaptureHandler, nullptr};
+	httpd_uri_t recordUri = {"/record", HTTP_GET, RecordHandler, nullptr};
+	httpd_uri_t filesUri = {"/files", HTTP_GET, FilesHandler, nullptr};
+	httpd_uri_t fileGetUri = {"/file", HTTP_GET, FileGetHandler, nullptr};
+	httpd_uri_t fileDelUri = {"/file", HTTP_DELETE, FileDeleteHandler, nullptr};
+	httpd_register_uri_handler(server, &captureUri);
+	httpd_register_uri_handler(server, &recordUri);
+	httpd_register_uri_handler(server, &filesUri);
+	httpd_register_uri_handler(server, &fileGetUri);
+	httpd_register_uri_handler(server, &fileDelUri);
+#endif
 
 	Serial.println(F("Camera stream server started"));
 }
@@ -188,6 +501,10 @@ void setup() {
 		// Without a camera there is nothing to do; halt here
 		while (true) delay(1000);
 	}
+
+#if CAM_SD_ENABLED
+	sd_ready = initSd();
+#endif
 
 	WiFi.mode(WIFI_STA);
 

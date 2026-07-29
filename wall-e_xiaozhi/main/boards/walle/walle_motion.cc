@@ -98,6 +98,7 @@ static QueueHandle_t anime_queue = nullptr;
 static SemaphoreHandle_t state_lock = nullptr;
 static adc_oneshot_unit_handle_t adc_handle = nullptr;
 static int battery_level_ = -999;
+static int light_level_ = 0;
 static int64_t status_timer_us = 0;
 
 
@@ -108,6 +109,10 @@ WalleMotion& WalleMotion::GetInstance() {
 
 int WalleMotion::battery_level() const {
     return battery_level_;
+}
+
+int WalleMotion::light_level() const {
+    return light_level_;
 }
 
 bool WalleMotion::auto_mode() const {
@@ -251,6 +256,10 @@ void WalleMotion::EvaluateCommand(char prefix, int number) {
     } else if (prefix == 'J' && number >= 0 && number <= 100) { // Eyebrow right
         state.auto_mode = false; xQueueReset(anime_queue);
         state.setpos[8] = (int)(number * 0.01f * (preset[8][1] - preset[8][0]) + preset[8][0]);
+    } else if (prefix == 'V' && number >= 0 && number <= 100) { // Illumination LED brightness
+        light_level_ = number;
+        if (number == 0) pwm.SetFullOff(LIGHT_PWM_CHANNEL);
+        else pwm.SetPwm(LIGHT_PWM_CHANNEL, (uint16_t)(number * 4095 / 100));
     }
 
     // WASD manual movements
@@ -614,6 +623,7 @@ esp_err_t WalleMotion::Init() {
         ESP_LOGE(TAG, "Servo PWM driver init failed: %s", esp_err_to_name(ret));
         return ret;
     }
+    pwm.SetFullOff(LIGHT_PWM_CHANNEL);      // illumination LED default off
 
     MotorsInit();
     BatteryInit();

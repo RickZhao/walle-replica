@@ -25,6 +25,7 @@
 #include "walle_motion.h"
 #include "walle_status_display.h"
 #include "walle_web_server.h"
+#include "walle_cam_viewer.h"
 
 #include <esp_log.h>
 #include <driver/spi_master.h>
@@ -87,6 +88,13 @@ private:
 
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
+            // While a camera preview/replay is on the eye display, BOOT
+            // stops it instead of toggling the chat state.
+            auto& viewer = WalleCamViewer::GetInstance();
+            if (viewer.IsBusy()) {
+                viewer.StopPlayback();
+                return;
+            }
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 if (GetNetworkType() == NetworkType::WIFI) {

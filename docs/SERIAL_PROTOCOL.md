@@ -48,6 +48,14 @@ Web 路由调 `arduino.send_command("前缀" + str(值))`。
 | `I` | 0..100 | 左眉毛（-> `setpos[7]`） | `wall-e.ino:332` | `/servoControl` |
 | `J` | 0..100 | 右眉毛（-> `setpos[8]`） | `wall-e.ino:336` | `/servoControl` |
 
+### 小智固件扩展指令（仅 `wall-e_xiaozhi`）
+
+以下指令只在小智主线固件（`walle_motion.cc` 的 `EvaluateCommand()`）中存在，Arduino UNO / 归档 ESP32 固件不识别：
+
+| 前缀 | 数字范围 | 含义 | 落点 | Web 路由 |
+|------|---------|------|-------------|---------|
+| `V` | 0..100 | 照明灯亮度（0=关灯，100=最亮；PCA9685 空闲通道 `LIGHT_PWM_CHANNEL`） | `walle_motion.cc` | `/servoControl`（小智 Web 面板 Light 滑杆） |
+
 ## Web -> Arduino：单字符指令
 
 **无数字参数**，前缀即整条指令。用于 Arduino IDE 串口监视器手动调试，Web 端不发（无对应路由）。
@@ -118,7 +126,7 @@ setpos[i] = int( number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0] )
 3. 前端 `static/js/main.js` 加调用该路由的交互（按钮/摇杆/滑杆）
 
 且指令前缀**避开已用的**：
-- 带数字：`X Y S O M A G T B E U L R I J`
+- 带数字：`X Y S O M A G T B E U L R I J`（小智固件额外占用 `V`）
 - 单字符：`w a s d q j l i k f g h b n m`
 
 全部已占用，新指令须另选字母。

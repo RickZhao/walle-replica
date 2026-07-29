@@ -7,6 +7,7 @@
 
 #include "walle_web_server.h"
 #include "walle_motion.h"
+#include "walle_cam_viewer.h"
 #include "config.h"
 
 #include <esp_log.h>
@@ -44,6 +45,16 @@ input[type=range]{flex:1}
 
 <h2>Camera</h2>
 <img id="cam" style="width:100%;border-radius:8px;background:#000" alt="camera stream">
+<div id="camctl" style="display:none">
+<button onclick="camPhoto()">Photo</button>
+<button id="recbtn" onclick="camRec()">Start rec</button>
+<button onclick="camFiles()">Files</button>
+<button onclick="camView('preview')">Preview</button>
+<button onclick="camView('replay')">Replay</button>
+<button onclick="camView('stop')">Stop view</button>
+</div>
+<div id="cammsg" style="font-size:14px;color:#8f8"></div>
+<div id="filebox" style="display:none;background:#1a2634;border-radius:8px;padding:8px;margin-top:6px;font-size:14px"></div>
 
 <h2>Drive</h2>
 <div>
@@ -57,6 +68,10 @@ input[type=range]{flex:1}
 
 <h2>Servos</h2>
 <div id="sliders"></div>
+
+<h2>Light</h2>
+<div class="row"><label>Brightness</label><input type="range" min="0" max="100" value="0"
+  onchange="post('/servoControl',{servo:'V',value:this.value})"></div>
 
 <h2>Animations</h2>
 <button onclick="post('/animate',{clip:0})">Reset</button>
@@ -74,6 +89,40 @@ if (stream_url) {
 } else {
   document.getElementById('cam').style.display = 'none';
 }
+// Camera module SD API (photo / record / files) - same origin as the stream
+const camapi = stream_url ? new URL(stream_url).origin : "";
+if (camapi) document.getElementById('camctl').style.display = 'block';
+let recording = false;
+function camMsg(t){document.getElementById('cammsg').textContent=t;}
+function camPhoto(){camMsg('capturing...');
+  fetch(camapi+'/capture').then(r=>r.json()).then(j=>{
+    camMsg(j.file?('saved '+j.file+' ('+j.size+' B)'):(j.msg||'error'));})
+  .catch(()=>camMsg('camera unreachable'));}
+function camRec(){
+  const action = recording?'stop':'start';
+  fetch(camapi+'/record?action='+action).then(r=>r.json()).then(j=>{
+    if(j.status==='OK'){recording=!recording;
+      document.getElementById('recbtn').textContent=recording?'Stop rec':'Start rec';
+      camMsg(recording?('recording '+j.file):('saved '+j.file+' ('+j.frames+' frames)'));}
+    else camMsg(j.msg||'error');})
+  .catch(()=>camMsg('camera unreachable'));}
+function camFiles(){
+  fetch(camapi+'/files').then(r=>r.json()).then(j=>{
+    const box=document.getElementById('filebox');
+    if(!j.files){camMsg(j.msg||'error');return;}
+    box.style.display='block';
+    box.innerHTML='<b>SD files</b> <button onclick="document.getElementById(\'filebox\').style.display=\'none\'">x</button><br>'+
+      (j.files.map(f=>`${f.path} (${(f.size/1024).toFixed(0)} KB) `+
+        `<a href="${camapi}/file?path=${f.path}" style="color:#8ab4f8">dl</a> `+
+        `<a href="#" onclick="camDel('${f.path}');return false" style="color:#f88">del</a>`).join('<br>')||'empty');
+  }).catch(()=>camMsg('camera unreachable'));}
+function camDel(p){fetch(camapi+'/file?path='+p,{method:'DELETE'})
+  .then(()=>camFiles()).catch(()=>camMsg('delete failed'));}
+// Preview / replay run on the main controller (eye display), not the cam module
+function camView(a){camMsg(a+'...');
+  fetch('/camview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action='+a})
+  .then(r=>r.json()).then(j=>camMsg(j.status==='OK'?(a=='stop'?'stopped':a+' started - see eye display'):(j.msg||'error')))
+  .catch(()=>camMsg('request failed'));}
 const servos=[['G','Head rot',50],['T','Neck top',50],['B','Neck bottom',0],
 ['E','Eye L',40],['U','Eye R',40],['L','Arm L',40],['R','Arm R',40],
 ['I','Brow L',50],['J','Brow R',50]];
@@ -255,6 +304,27 @@ static esp_err_t GamepadStatusHandler(httpd_req_t* req) {
     return SendJson(req, "{\"status\":\"OK\",\"enabled\":false,\"active\":false,\"connected\":false}");
 }
 
+static esp_err_t CamViewHandler(httpd_req_t* req) {
+    std::string body = ReadBody(req);
+    char action[16];
+    if (!FormParam(body, "action", action, sizeof(action))) {
+        return SendErr(req, "Unable to read POST data");
+    }
+    auto& viewer = WalleCamViewer::GetInstance();
+    std::string err;
+    if (strcmp(action, "preview") == 0) {
+        err = viewer.ShowLatestPhoto();
+    } else if (strcmp(action, "replay") == 0) {
+        err = viewer.PlayLatestVideo();
+    } else if (strcmp(action, "stop") == 0) {
+        viewer.StopPlayback();
+    } else {
+        return SendErr(req, "unknown action, use preview/replay/stop");
+    }
+    if (!err.empty()) return SendErr(req, err.c_str());
+    return SendOk(req);
+}
+
 
 // -------------------------------------------------------------------
 // Server lifecycle
@@ -285,6 +355,7 @@ esp_err_t WalleWebServerStart() {
         { .uri = "/arduinoStatus",  .method = HTTP_POST, .handler = ArduinoStatusHandler, .user_ctx = nullptr },
         { .uri = "/gamepadStatus",  .method = HTTP_GET,  .handler = GamepadStatusHandler, .user_ctx = nullptr },
         { .uri = "/gamepadStatus",  .method = HTTP_POST, .handler = GamepadStatusHandler, .user_ctx = nullptr },
+        { .uri = "/camview",        .method = HTTP_POST, .handler = CamViewHandler,       .user_ctx = nullptr },
     };
     for (const auto& route : routes) {
         httpd_register_uri_handler(s_server, &route);

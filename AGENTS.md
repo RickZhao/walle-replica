@@ -29,9 +29,10 @@ walle-replica/
 │   │   ├── walle_board.cc       # 板类：GC9A01 显示 + NoAudioCodecSimplex + 按键 + 运动核心/状态屏/Web 启动
 │   │   │                        #   + DualNetworkBoard：Wi-Fi 优先、连接超时自动回退 ML307A 4G（双击 BOOT 手动切网）
 │   │   ├── walle_motion.cc/.h   # 运动核心：舵机动力学、电机斜坡、动画队列、电量（移植自 Arduino 版）
-│   │   ├── walle_mcp_tools.cc   # MCP 工具注册（云端 LLM function calling → 动作）
+│   │   ├── walle_mcp_tools.cc   # MCP 工具注册（云端 LLM function calling → 动作/照明灯/摄像头）
 │   │   ├── walle_serial.cc      # USB 串口协议任务（调试 + 树莓派回退）
-│   │   ├── walle_web_server.cc  # Web 控制面板（esp_http_server :80，API 兼容 Flask 版，含摄像头画面区）
+│   │   ├── walle_web_server.cc  # Web 控制面板（esp_http_server :80，API 兼容 Flask 版，含摄像头画面区与预览/回放按钮）
+│   │   ├── walle_cam_viewer.cc/.h # 眼睛屏照片预览/AVI 回放（HTTP Range 拉取 cam SD 卡文件，esp_new_jpeg 解码 → SetPreviewImage）
 │   │   ├── walle_status_display.cc # ST7789 状态屏（第二个 LVGL 屏：电量/网络/状态，1s 刷新）
 │   │   ├── pca9685.cc/.h        # LU9685/PCA9685 I2C 舵机驱动（自写，小智原生无此驱动）
 │   │   └── config.json          # 批量构建配置
@@ -49,7 +50,8 @@ walle-replica/
 │       ├── wall-e_esp32/        # 主控固件（串口协议与 UNO 版一致）：内置 Web 控制端、PCM5102 I2S 音频、
 │       │                        #   蓝牙手柄（Bluepad32）、GC9A01×2 眼睛 + ST7789 状态屏；data/ 为 LittleFS 镜像
 │       └── wall-e_esp32_calibration/ # ESP32 版标定 sketch（小智固件标定也用这份）
-├── wall-e_esp32_cam/            # 第二块 ESP32-S3-CAM 的 MJPEG 推流固件（/stream，主线配套摄像头外设）
+├── wall-e_esp32_cam/            # 第二块 ESP32-S3-CAM 固件（主线配套摄像头外设）：MJPEG 推流（/stream）
+│                                #   + microSD 拍照录像（/capture、/record、/files、/file，XIAO Sense 板载卡槽 SPI）
 ├── docs/                        # 中文技术文档
 │   ├── SERIAL_PROTOCOL.md       # 串口通信协议（必读）
 │   ├── WIRING.md                # Arduino 接线指南
@@ -110,7 +112,9 @@ walle-replica/
 5. 尚未移植：`/tts`（云端 TTS，返回明确 Error）；BOM 扩展项（INMP441 麦克风、ASR-Pro 离线语音）。
 6. 显示屏（默认启用，`web_config.h` 的 `DISPLAYS_ENABLED`）：两块 GC9A01 圆屏做眼睛（矢量绘制，表情跟随 `i/j/k/l` 指令，2.5–6s 随机眨眼），一块 ST7789 做状态屏（电量/Wi-Fi/手柄/自动模式，1s 刷新）。三屏共用 SPI（SCK=21、MOSI=18，RST=47、BL=48 共接），各自 CS/DC 见 `web_config.h`。若 ST7789 画面偏移，调 `status_display.cpp` 构造函数的 offset 参数；眨眼动画期间 loop 有 ~40ms 阻塞，舵机控制由 dt 补偿，属正常。
 6. 蓝牙手柄：默认启用（`web_config.h` 的 `BT_GAMEPAD_ENABLED`），手柄进入配对模式即可连接；映射与 `gamepad.py` 一致（左摇杆行走、右摇杆头/颈、LT/RT 降臂、LB/RB 升臂、ABXY 眼部表情、Back 切自动模式、十字键随机音效/动画）。
-7. 摄像头（第二块 ESP32-S3-CAM）：编辑 `wall-e_esp32_cam/camera_pins.h` 选板型、在 sketch 顶部填 Wi-Fi 凭据（留空则连主控 `WallE` AP），烧录后从串口拿到 IP，填入 `archive/wall-e_esp32/wall-e_esp32/data/index.html` 顶部的 `stream_url`（如 `http://192.168.4.3/stream`），重新上传 LittleFS 数据。
+7. 摄像头（第二块 ESP32-S3-CAM）：编辑 `wall-e_esp32_cam/camera_pins.h` 选板型、在 sketch 顶部填 Wi-Fi 凭据（留空则连主控 `WallE` AP），烧录后从串口拿到 IP，填入 `archive/wall-e_esp32/wall-e_esp32/data/index.html` 顶部的 `stream_url`（如 `http://192.168.4.3/stream`），重新上传 LittleFS 数据。小智主线面板则在 `walle_web_server.cc` 内嵌 HTML 的 `stream_url` 填同一地址。
+   - **microSD 拍照/录像**（XIAO Sense 板载卡槽，SPI：CS=2、SCK=7、MISO=8、MOSI=9，插 FAT32 卡即可）：固件端点 `/capture`（拍照存 `/photos/`）、`/record?action=start|stop`（MJPEG→AVI 存 `/videos/`，帧率 `REC_FPS`）、`/files`（列表）、`/file?path=`（GET 下载 / DELETE 删除，GET 支持 HTTP Range 供主控分段取帧）。小智 Web 面板摄像头区按钮直连这些端点；语音工具 `self.walle.camera` 通过 `config.h` 的 `CAM_MODULE_URL` 调用。SD 挂载失败不影响推流。
+   - **眼睛屏预览/回放**（`walle_cam_viewer.cc`）：`self.walle.camera` 的 `photo` 拍完自动预览，另有 `preview`（最新照片）/`replay`（最新 AVI 按帧回放）/`stop`；Web 面板 Preview/Replay/Stop view 按钮走主控 `POST /camview`；回放期间单击 BOOT 停止。照片显示 5s 后自动恢复眼睛（`SetPreviewImage` 预览定时器），回放结束/停止即恢复。
 8. 前端 `data/index.html`/`login.html` 由 `archive/arduino-pi/web_interface/templates/` 去 Jinja 化生成（静态路径、`CODEBLOCK_*` 与音效列表为构建期烘焙值）；Pi 端模板改动后需重新生成（会覆盖 `stream_url` 行）。
 
 ### 4.2 树莓派 Web 服务
@@ -179,6 +183,7 @@ dmesg | grep tty
 | `E/U` | 0..100 | 左眼 / 右眼 | `/servoControl` |
 | `L/R` | 0..100 | 左臂 / 右臂 | `/servoControl` |
 | `I/J` | 0..100 | 左眉毛 / 右眉毛 | `/servoControl` |
+| `V` | 0..100 | 照明灯亮度（0=关灯；**仅小智固件**，PCA9685 空闲通道 `LIGHT_PWM_CHANNEL`） | `/servoControl` |
 
 ### 6.2 调试单字符指令（仅 Arduino 串口监视器）
 
@@ -208,6 +213,8 @@ setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 3. `archive/arduino-pi/web_interface/static/js/main.js` 增加前端交互（按钮/摇杆/滑杆）。
 
 避开已占用前缀（见上表），否则硬件不会响应或行为错乱。完整协议细节见 `docs/SERIAL_PROTOCOL.md`。
+
+小智主线固件的对应落点是 `walle_motion.cc` 的 `EvaluateCommand()`——串口任务和小智 Web 面板都是通用前缀转发，新指令只需在 `EvaluateCommand()` 加分支 + MCP 工具 + 内嵌 HTML 交互。照明灯（前缀 `V`）即按此模式实现：PCA9685 空闲通道 9 驱动，见 `config.h` 的 `LIGHT_PWM_CHANNEL`。
 
 ## 7. 关键配置文件
 

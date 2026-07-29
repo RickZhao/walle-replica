@@ -62,6 +62,12 @@
 #define SERVO_I2C_SCL_GPIO GPIO_NUM_9
 #define SERVO_OE_GPIO      GPIO_NUM_10
 
+// Illumination LED on a spare PCA9685 channel (12-bit PWM dimming).
+// The channel header has V+/GND/signal; a small LED + series resistor can
+// be driven directly (~10mA source / 25mA sink), a brighter lamp needs an
+// N-MOSFET low-side switch on the signal pin.
+#define LIGHT_PWM_CHANNEL    9
+
 // Battery voltage divider (ADC1_CH0); divider must bring 12.6V <= ~3.1V
 #define BATTERY_ADC_GPIO   GPIO_NUM_1
 #define BATTERY_ADC_UNIT   ADC_UNIT_1
@@ -83,6 +89,11 @@
 // ---- Web control panel (stage 3, esp_http_server on port 80) ----
 #define WEB_SERVER_ENABLED      1
 #define WEB_SERVER_PORT         80
+
+// ESP32-S3-CAM module (wall-e_esp32_cam) base URL for photo/record API.
+// Only needed if the camera module is present; find its IP in the module's
+// serial output, e.g. "http://192.168.4.3".
+#define CAM_MODULE_URL          "http://192.168.4.3"
 
 // ---- 4G fallback: ML307A Cat.1 modem on UART (TX/RX from ESP32 view) ----
 #define ML307_TX_PIN   GPIO_NUM_2

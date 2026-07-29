@@ -6,7 +6,9 @@
  *          control with acceleration ramping, animation queue, autonomous
  *          mode, battery monitoring and the shared command dispatcher
  *          (evaluateCommand - same semantics as the Arduino serial
- *          protocol, see docs/SERIAL_PROTOCOL.md).
+ *          protocol, see docs/SERIAL_PROTOCOL.md). The dispatcher also
+ *          handles the illumination LED (prefix 'V', PCA9685 spare
+ *          channel).
  *
  * All control paths (MCP tools, USB serial, future web server) dispatch
  * through EvaluateCommand(), identical to the Arduino firmware.
@@ -44,6 +46,9 @@ public:
 
     /// Last measured battery percentage, -999 when unavailable.
     int battery_level() const;
+
+    /// Illumination LED brightness 0-100 (0 = off).
+    int light_level() const;
 
     /// True while the autonomous random-movement mode is on.
     bool auto_mode() const;

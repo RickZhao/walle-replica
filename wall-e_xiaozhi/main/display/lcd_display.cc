@@ -866,7 +866,9 @@ void LcdDisplay::SetupUI() {
 
     /* Middle layer: preview_image_ - centered display */
     preview_image_ = lv_image_create(screen);
-    lv_obj_set_size(preview_image_, width_ / 2, height_ / 2);
+    // walle: full-screen preview (upstream uses width_/2) so camera photos
+    // and video replay fill the round eye display
+    lv_obj_set_size(preview_image_, width_, height_);
     lv_obj_align(preview_image_, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
 
@@ -1037,8 +1039,9 @@ void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
     auto img_dsc = preview_image_cached_->image_dsc();
     lv_image_set_src(preview_image_, img_dsc);
     if (img_dsc->header.w > 0 && img_dsc->header.h > 0) {
-        // zoom factor 0.5
-        lv_image_set_scale(preview_image_, 128 * width_ / img_dsc->header.w);
+        // walle: zoom factor 1.0 - fit image width to the full display
+        // (upstream uses 128 * ... = 0.5 zoom)
+        lv_image_set_scale(preview_image_, 256 * width_ / img_dsc->header.w);
     }
 
     // Hide emoji_box_
