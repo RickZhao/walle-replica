@@ -1,0 +1,49 @@
+<html>
+<body>
+<pre>
+<h1>礦ision Build Log</h1>
+<h2>Project:</h2>
+C:\Users\EVK\Desktop\中景园1.3寸240x240 IPS显示屏技术资料\中景园电子0.96寸ips-51(模拟SPI中文显示)\STC_SoftSPI_CNCode(模拟SPI中文显示)\Mode.uvproj
+Project File Date:  09/16/2015
+
+<h2>Output:</h2>
+Rebuild target 'Target 1'
+compiling 282838p.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_GUI_DRAWFONT_GBK16?282838P
+Program Size: data=52.0 xdata=0 code=2480
+creating hex file from ".\Out Hex\SPI"...
+".\Out Hex\SPI" - 0 Error(s), 1 Warning(s).
+Rebuild target 'Target 1'
+compiling 282838p.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_GUI_DRAWFONT_GBK16?282838P
+Program Size: data=52.0 xdata=0 code=2471
+creating hex file from ".\Out Hex\SPI"...
+".\Out Hex\SPI" - 0 Error(s), 1 Warning(s).
+Rebuild target 'Target 1'
+compiling 282838p.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_GUI_DRAWFONT_GBK16?282838P
+Program Size: data=52.0 xdata=0 code=2471
+creating hex file from ".\Out Hex\SPI"...
+".\Out Hex\SPI" - 0 Error(s), 1 Warning(s).
+Rebuild target 'Target 1'
+compiling 282838p.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_GUI_DRAWFONT_GBK16?282838P
+Program Size: data=52.0 xdata=0 code=2471
+creating hex file from ".\Out Hex\SPI"...
+".\Out Hex\SPI" - 0 Error(s), 1 Warning(s).
+Rebuild target 'Target 1'
+compiling 282838p.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_GUI_DRAWFONT_GBK16?282838P
+Program Size: data=52.0 xdata=0 code=2466
+creating hex file from ".\Out Hex\SPI"...
+".\Out Hex\SPI" - 0 Error(s), 1 Warning(s).
