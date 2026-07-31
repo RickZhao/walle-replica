@@ -4,9 +4,9 @@
  * Single-MCU design on ESP32-S3 N16R8 (third-party Wall-E kit, see
  * hardware/另一套硬件方案.md):
  *   - Voice: INMP441 mic + PCM5102 DAC (NoAudioCodecSimplex)
- *   - Eyes:  single GC9A01 1.28" round 240x240 display (LVGL via SpiLcdDisplay)
- *            DISABLED until the eye-display wiring is confirmed
- *            (EYE_DISPLAY_ENABLED in config.h)
+ *   - Eyes:  eye display is on the ESP32-S3-CAM module (confirmed), NOT on
+ *            this MCU - the GC9A01 1.28" round 240x240 code path (LVGL via
+ *            SpiLcdDisplay) is kept but disabled (EYE_DISPLAY_ENABLED=0)
  *   - Status: ST7789 1.3" 240x240 on its own SPI bus (walle_status_display)
  *   - Motion: TB6612 motors + LU9685/PCA9685 servos (walle_motion)
  *   - Buttons: BOOT (chat/config), volume +/- and long-press restart

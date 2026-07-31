@@ -9,6 +9,12 @@
  * If your module is not listed, copy a preset block and adjust the
  * pins according to the vendor's documentation.
  *
+ * WARNING: the currently selected XIAO ESP32-S3 Sense preset (and the
+ * SD pins below) predates hardware confirmation. The actual module is a
+ * generic "ESP32-S3-CAM" board (OV3660); the camera/SD pin mapping is
+ * UNVERIFIED and likely wrong - see docs/NEW_HARDWARE_MIGRATION.md
+ * Step 4.5 (board pinout verification).
+ *
  * NOTE: the SD card photo/video feature (CAM_SD_ENABLED in the sketch)
  * is wired for the XIAO ESP32-S3 Sense preset only (SPI: CS=2, SCK=7,
  * MISO=8, MOSI=9). Other boards need their own SD pins checked first.

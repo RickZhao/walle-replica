@@ -11,10 +11,10 @@
   唤醒词/ASR/TTS（小智音频管线 + xiaozhi.me 官方云）
   MCP 工具（云端 LLM function calling → 动作）
   运动控制（9 舵机动力学 + TB6612 电机 + 动画队列）
-  眼睛显示（GC9A01 圆屏，LVGL + emoji）
+  眼睛显示（主控侧已禁用：第三方套件的眼屏接在 CAM 模组上，见 §7.1；GC9A01 圆屏代码保留，EYE_DISPLAY_ENABLED=0）
   状态显示（ST7789 1.3" 方屏，电量/Wi-Fi/助手状态/自动模式，1s 刷新）
   Web 控制面板（esp_http_server :80，API 兼容树莓派 Flask 版）
-  USB 串口协议（调试 + 树莓派回退）
+  USB 串口协议（已禁用：GPIO19/20 原生 USB 被 PWMA/舵机 I2C 占用，见 §4）
 ```
 
 控制面统一入口：`WalleMotion::EvaluateCommand(prefix, number)`——MCP 工具、USB 串口、Web 路由全部走同一分发器，语义与 Arduino 版 `docs/SERIAL_PROTOCOL.md` 完全一致。
@@ -51,22 +51,25 @@ idf.py -p COMx flash monitor
 
 ## 4. 引脚表（`main/boards/walle/config.h`）
 
+引脚映射以 `hardware/另一套硬件方案.md`（第三方 Wall-E 套件）为准：
+
 | 功能 | GPIO | 说明 |
 |------|------|------|
-| INMP441 SCK/WS/SD | 40 / 41 / 44 | I2S 麦克风（输入 16kHz） |
-| PCM5102 BCK/LRCK/DIN | 12 / 13 / 11 | I2S DAC（输出 24kHz），经 PAM8406 功放 |
-| GC9A01 SCK/MOSI | 21 / 18 | SPI3，40MHz |
-| GC9A01 CS/DC/RST/BL | 38 / 39 / 47 / 48 | 单块圆屏渲染双眼（BOM 只有 1 块屏 + 2 镜片） |
-| TB6612 AIN1/AIN2 | 5 / 6 | 左电机方向 |
-| TB6612 BIN1/BIN2 | 15 / 16 | 右电机方向 |
-| TB6612 PWMA/PWMB | 4 / 7 | LEDC 20kHz 8bit |
-| TB6612 STBY | 17 | 拉高使能 |
-| LU9685 SDA/SCL | 8 / 9 | I2C @ 0x40，60Hz |
-| LU9685 OE | 10 | 舵机输出使能（低有效） |
-| 电池分压 | 1 (ADC1_CH0) | 分压比 0.180（100k+22k），满电 12.6V ≤ 3.1V |
-| BOOT 按键 | 0 | 单击：配网/对话切换；双击：手动切 Wi-Fi/4G |
-| ST7789 CS/DC（可选） | 42 / 14 | 阶段 3 状态屏，与 GC9A01 共用 SCK/MOSI |
+| INMP441 SCK/WS/SD | 5 / 4 / 6 | I2S 麦克风（输入 16kHz） |
+| PCM5102 BCK/LRCK/DIN | 15 / 16 / 7 | I2S DAC（输出 24kHz），经 PAM8406 功放 |
+| TB6612 AIN1/AIN2 | 17 / 18 | 左电机方向 |
+| TB6612 BIN1/BIN2 | 12 / 13 | 右电机方向 |
+| TB6612 PWMA/PWMB | 19 / 11 | LEDC 20kHz 8bit |
+| TB6612 STBY | 无（接 5V） | PCB 上拉高常使能，固件不驱动（`MOTOR_STBY_WIRED=0`） |
+| LU9685 SDA/SCL | 20 / 21 | I2C @ 0x40，60Hz；OE 未接 |
+| 按键 BOOT/音量+/音量-/重启 | 0 / 38 / 39 / 41 | 重启为长按触发 |
+| ST7789 SCLK/MOSI/DC/RST/BL | 14 / 47 / 40 / 45 / 42 | 独立 SPI 总线；7 针模块无 CS（内部拉低） |
+| 电池分压 | 1 (ADC1_CH0) | 第三方文档无此项，分压接线待硬件确认 |
+| CAM UART TX/RX | 9 / 10 | 预留（固件未实现，现状走 Wi-Fi HTTP，见 §7） |
 | ML307A TX/RX（可选） | 2 / 3 | 4G 模组 UART（ESP32 视角），DTR 不接 |
+| 眼睛屏 | 无主控引脚 | 第三方套件的眼屏接在 CAM 模组上，主控侧 `EYE_DISPLAY_ENABLED=0` 禁用（见 §7.1） |
+
+注意：**GPIO19/20 是 ESP32-S3 原生 USB D-/D+**，被 PWMA 和舵机 I2C SDA 占用 → USB 串口任务禁用（`WALLE_SERIAL_ENABLED=0`），日志走 UART0（GPIO43/44）。
 
 ## 5. MCP 工具清单（`walle_mcp_tools.cc`）
 
@@ -80,7 +83,7 @@ idf.py -p COMx flash monitor
 | `self.walle.play_animation` | id (0-2) | 复位/开机眨眼/好奇观察 |
 | `self.walle.set_auto_mode` | on | 自主随机小动作 |
 | `self.walle.light` | brightness (0-100) | 照明灯亮度（PCA9685 通道 `LIGHT_PWM_CHANNEL`） |
-| `self.walle.camera` | action | photo（拍完自动眼睛屏预览）/record_start/record_stop/preview/replay/stop |
+| `self.walle.camera` | action | photo（拍完自动预览，眼屏禁用期间无显示出口）/record_start/record_stop/preview/replay/stop |
 | `self.battery.get_level` | — | 电量百分比 |
 
 ## 6. Web 控制面板（`walle_web_server.cc`，阶段 3）
@@ -102,12 +105,18 @@ esp_http_server 跑在 **80 端口**，路由契约与树莓派 Flask 版（`arc
 
 ## 7. ESP32-S3-CAM 摄像头接入（第二块板）
 
-摄像头是**独立的网络外设**：第二块 ESP32-S3-CAM 跑主目录下的 Arduino 推流固件（`wall-e_esp32_cam/`），与主控仅电源线相连，画面走 Wi-Fi，浏览器直接拉它的流，不经过小智主控。
+摄像头是**独立的网络外设**：第二块 ESP32-S3-CAM 跑主目录下的 Arduino 推流固件（`wall-e_esp32_cam/`），画面走 Wi-Fi，浏览器直接拉它的流，不经过小智主控。
+
+**链路现状与规划**：当前主控 ↔ CAM 只有电源线，控制与文件传输全走 Wi-Fi HTTP（`CAM_MODULE_URL`）。第三方引脚表规划了 UART 链路（主控 TX=9/RX=10 ↔ CAM 21(TX)/14(RX)），主控侧宏已落地（`CAM_UART_*`）但**固件未实现**（计划见 `docs/NEW_HARDWARE_MIGRATION.md` Step 4）。
+
+**板型注意**：实际 CAM 模块为通用 "ESP32-S3-CAM"（OV3660），而 `camera_pins.h` 当前选的是 XIAO ESP32-S3 Sense 预设（SD 引脚 CS=2/SCK=7/MISO=8/MOSI=9 也是 XIAO 专用）——未经硬件验证，摄像头/SD 引脚很可能不匹配，需按实际模块资料核对修正（见 `docs/NEW_HARDWARE_MIGRATION.md` 待办）。
+
+**眼睛屏在 CAM 上**：两块 1.28" 圆屏接在 CAM 模组（共享 SPI：SCK=42/MOSI=45/DC=41/RST=46，片选左=2/右=0，接线已确认），由 CAM 固件的 `eye_display.h` 驱动（GC9A01 假设，待实机验证）；表情经 CAM 的 `/eyes?expr=neutral|sad|left|right` 切换，主控侧眼屏代码保持禁用。
 
 接入步骤：
 
 1. 编辑 `wall-e_esp32_cam/camera_pins.h` 选板型（XIAO/Freenove/S3-EYE 预设），在 sketch 顶部填家庭 Wi-Fi 凭据（**小智固件不发 `WallE` AP**，留空会一直回退重试；不要把真实密码提交到 git）。
-2. 用 Arduino IDE（Arduino-ESP32 core 3.x）烧录，从串口日志拿到 CAM 板的 IP。
+2. 用 Arduino IDE（Arduino-ESP32 core 3.x + `Arduino_GFX` 库，眼屏驱动依赖）烧录，从串口日志拿到 CAM 板的 IP。
 3. 编辑 `main/boards/walle/walle_web_server.cc` 内嵌页面顶部的 `const stream_url = "http://<cam-ip>/stream";`，重新 `idf.py build flash`。
 4. 打开 Web 控制面板（`http://<esp-ip>`），"Camera" 区即显示实时画面；`stream_url` 留空时该区域自动隐藏。
 
@@ -115,9 +124,9 @@ esp_http_server 跑在 **80 端口**，路由契约与树莓派 Flask 版（`arc
 
 ### 7.1 microSD 拍照/录像与眼睛屏预览/回放
 
-CAM 固件带 SD 卡（XIAO Sense 卡槽，FAT32）：`/capture` 拍照存 `/photos/`、`/record?action=start|stop` 录 MJPEG→AVI 存 `/videos/`、`/files` 列表、`/file?path=` 下载/删除（GET 支持 HTTP Range）。
+CAM 固件带 SD 卡（引脚按 XIAO Sense 预设：CS=2/SCK=7/MISO=8/MOSI=9，实际模块待核对，FAT32）：`/capture` 拍照存 `/photos/`、`/record?action=start|stop` 录 MJPEG→AVI 存 `/videos/`、`/files` 列表、`/file?path=` 下载/删除（GET 支持 HTTP Range）。
 
-主控侧 `walle_cam_viewer.cc` 负责把 SD 卡内容搬上 GC9A01 眼睛屏：
+主控侧 `walle_cam_viewer.cc` 负责把 SD 卡内容搬上眼睛屏。**注意**：第三方套件的眼睛屏接在 CAM 模组上（不在主控），主控侧 `EYE_DISPLAY_ENABLED=0`，预览/回放当前**无本地显示出口**（`NoDisplay`）；以下描述为代码保留能力，待 CAM 侧显示方案明确后再激活：
 
 - **照片预览**：HTTP 拉取 JPEG → esp_new_jpeg 解码（宽高超 480px 自动 1/2^n 缩放）→ `LcdDisplay::SetPreviewImage()` 全屏显示，5s 后预览定时器自动恢复眼睛动画；语音"拍张照"成功后自动预览刚拍的照片。
 - **AVI 回放**：按 `/files` 找最新录像，Range 请求探测 RIFF 头（帧率取自 `avih.dwMicroSecPerFrame`）与尾部 `idx1` 索引，再逐帧 Range 拉取 → 解码 → 逐帧 `SetPreviewImage`（每帧重置预览定时器），按帧率节拍播放；结束/停止后恢复眼睛。连续 10 帧失败自动中止。
@@ -128,13 +137,13 @@ CAM 固件带 SD 卡（XIAO Sense 卡槽，FAT32）：`/capture` 拍照存 `/pho
 
 ## 8. 状态屏（`walle_status_display.cc`，阶段 3）
 
-ST7789 1.3" 240x240，与 GC9A01 共用 SPI3（CS=42/DC=14，RST/BL 共接）。通过 `lvgl_port_add_disp` 注册为 esp_lvgl_port 任务上的**第二个 LVGL 屏**（须在主屏初始化之后调用 `Init()`）。内容 1s 刷新：电量、网络（Wi-Fi IP 或 4G）、助手状态、自动模式。引脚与偏移在 `config.h` 的 `STATUS_DISPLAY_*`；画面偏移时调 `STATUS_DISPLAY_OFFSET_X/Y`。
+ST7789 1.3" 240x240，**独立 SPI 总线**（SCLK=14/MOSI=47/DC=40/RST=45/BL=42；7 针模块无 CS，内部拉低，`STATUS_SPI_CS_PIN=NC`）。眼睛屏启用时通过 `lvgl_port_add_disp` 注册为 esp_lvgl_port 任务上的**第二个 LVGL 屏**（须在主屏初始化之后调用 `Init()`）；当前眼睛屏禁用（`EYE_DISPLAY_ENABLED=0`），它是唯一 LVGL 屏，自行初始化 LVGL port。内容 1s 刷新：电量、网络（Wi-Fi IP 或 4G）、助手状态、自动模式。引脚与偏移在 `config.h` 的 `STATUS_DISPLAY_*`；画面偏移时调 `STATUS_DISPLAY_OFFSET_X/Y`。
 
 ## 9. 已知的放弃/降级项（相对 Arduino 版）
 
 - **蓝牙手柄**：Bluepad32 是 Arduino 专用库，不可移植（远期可用 IDF esp_hid 重做）。
 - **wav 音效播放**：ESP32-audioI2S 不可移植；音效由云端 TTS 替代。
-- **自绘矢量眼睛**：改用 xiaozhi LVGL/emoji 显示框架，表情由云端 emotion 驱动。
+- **自绘矢量眼睛**：改用 xiaozhi LVGL/emoji 显示框架，表情由云端 emotion 驱动（当前眼屏在主控侧禁用，暂不生效，见 §7.1）。
 
 ## 10. 舵机标定
 

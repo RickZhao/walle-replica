@@ -27,14 +27,16 @@
 #define AUDIO_I2S_SPK_GPIO_LRCK GPIO_NUM_16   // PCM5102 LRCK
 #define AUDIO_I2S_SPK_GPIO_DOUT GPIO_NUM_7    // PCM5102 DIN
 
-// ---- Eye display: single GC9A01 1.28" round 240x240 (BOM item 14) ----
-// NOTE: the BOM carries ONE display module plus two eye lenses; both
-// eyes are rendered on the single screen (electron-bot style).
-// TODO: eye-display wiring is missing from the third-party pin table and
-// awaits user confirmation. The pin values below are the OLD wiring and
-// CONFLICT with the new hardware (servo I2C, motors, volume buttons,
-// ST7789) — the eye display is therefore DISABLED until the real wiring
-// is known: set the pins and flip EYE_DISPLAY_ENABLED to 1.
+// ---- Eye displays: two 1.28" round 240x240 (BOM item 14) ----
+// CONFIRMED (2026-07-31): the two eye displays are wired to the
+// ESP32-S3-CAM module and driven by it (shared SPI on the CAM side:
+// SCL=42, SDA=45, DC=41, RST=46; per-display select "L/R": left=GPIO2,
+// right=GPIO0; driver IC TBD, likely GC9A01) — they are NOT connected to
+// this main MCU, so the eye display stays permanently disabled here. The
+// DISPLAY_SPI_* values below are the OLD main-MCU wiring (which also
+// conflicts with the new hardware: servo I2C, motors, volume buttons,
+// ST7789) and are kept only as a reference for the unused GC9A01 code
+// path — do not enable.
 #define EYE_DISPLAY_ENABLED 0
 
 #define DISPLAY_WIDTH   240
@@ -45,14 +47,14 @@
 #define DISPLAY_OFFSET_X 0
 #define DISPLAY_OFFSET_Y 0
 
-#define DISPLAY_SPI_SCLK_PIN  GPIO_NUM_21   // TODO: conflicts with servo I2C SCL
-#define DISPLAY_SPI_MOSI_PIN  GPIO_NUM_18   // TODO: conflicts with motor AIN2
-#define DISPLAY_SPI_CS_PIN    GPIO_NUM_38   // TODO: conflicts with volume-up button
-#define DISPLAY_SPI_DC_PIN    GPIO_NUM_39   // TODO: conflicts with volume-down button
-#define DISPLAY_SPI_RESET_PIN GPIO_NUM_47   // TODO: conflicts with ST7789 MOSI
+#define DISPLAY_SPI_SCLK_PIN  GPIO_NUM_21   // stale (old wiring; eye display is on the CAM module)
+#define DISPLAY_SPI_MOSI_PIN  GPIO_NUM_18   // stale
+#define DISPLAY_SPI_CS_PIN    GPIO_NUM_38   // stale
+#define DISPLAY_SPI_DC_PIN    GPIO_NUM_39   // stale
+#define DISPLAY_SPI_RESET_PIN GPIO_NUM_47   // stale
 #define DISPLAY_SPI_SCLK_HZ   (40 * 1000 * 1000)
 
-#define DISPLAY_BACKLIGHT_PIN           GPIO_NUM_48  // TODO: unconfirmed
+#define DISPLAY_BACKLIGHT_PIN           GPIO_NUM_48  // stale
 #define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
 
 // ---- Buttons (BOM: 4x CHA PB13) ----
@@ -123,10 +125,14 @@
 #define WALLE_SERIAL_ENABLED    0
 
 // ---- ESP32-S3-CAM module (wall-e_esp32_cam) ----
-// Control + file transfer over UART (this hardware wires the CAM to
-// GPIO9/10); Wi-Fi MJPEG preview (/stream) still uses CAM_MODULE_URL.
-#define CAM_UART_TX_PIN  GPIO_NUM_9    // -> CAM GPIO14 (RX)
-#define CAM_UART_RX_PIN  GPIO_NUM_10   // <- CAM GPIO21 (TX)
+// UART link per the third-party pin table (main 9/10 <-> CAM 21/14):
+// RESERVED, not implemented - no code references these macros yet.
+// Control + file transfer currently run over Wi-Fi HTTP (CAM_MODULE_URL);
+// Wi-Fi MJPEG preview (/stream) also stays on Wi-Fi. CAM-side GPIO21/14
+// availability is pending board verification (docs/NEW_HARDWARE_MIGRATION.md
+// Step 4.5).
+#define CAM_UART_TX_PIN  GPIO_NUM_9    // -> CAM GPIO14 (RX), reserved
+#define CAM_UART_RX_PIN  GPIO_NUM_10   // <- CAM GPIO21 (TX), reserved
 #define CAM_UART_BAUD    115200
 // CAM Wi-Fi base URL for the MJPEG preview; find its IP in the module's
 // serial output, e.g. "http://192.168.4.3".
