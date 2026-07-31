@@ -1,0 +1,178 @@
+C51 COMPILER V9.00   51                                                                    02/08/2022 23:49:52 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE 51
+OBJECT MODULE PLACED IN .\Objects\51.obj
+COMPILER INVOKED BY: d:\Keil_51\C51\BIN\C51.EXE 51.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\51.lst) OBJECT(.\Objects
+                    -\51.obj)
+
+line level    source
+
+   1          #include<reg52.h>           
+   2          #include <intrins.h>  
+   3          typedef  unsigned char  uchar;        
+   4          typedef  unsigned int   uint;      
+   5            
+   6          sbit scl=P2^6;                      
+   7          sbit sda=P2^7;                  
+   8          #define LU9685_adrr1 0x00                               // LU9685_adrr1=A4*32+A3*16+A2*8+A1*4+A0*2,LU9685模块上面焊点短接的话Ax=1，否
+             -则为0
+   9          
+  10          void delayms(uint z)
+  11          {
+  12   1        uint x,y;
+  13   1        for(x=z;x>0;x--)
+  14   1            for(y=110;y>0;y--);
+  15   1      }
+  16          void delayus()  //大于4.7us
+  17          {
+  18   1              _nop_();         
+  19   1              _nop_();
+  20   1              _nop_();
+  21   1              _nop_();
+  22   1              _nop_();
+  23   1      
+  24   1      }
+  25          /*---------------------------------------------------------------
+  26                           IIC初始化       
+  27          ----------------------------------------------------------------*/
+  28          void init()
+  29          {
+  30   1          sda=1;                //sda scl使用之前被拉高
+  31   1          delayus();
+  32   1          scl=1;
+  33   1          delayus();
+  34   1      }
+  35          /*---------------------------------------------------------------
+  36                           IIC总线开始传输
+  37          ----------------------------------------------------------------*/
+  38          void start()
+  39          {
+  40   1          sda=1;
+  41   1          delayus();
+  42   1          scl=1;       //scl高sda拉低 
+  43   1          delayus();
+  44   1          sda=0;
+  45   1          delayus();
+  46   1          scl=0;
+  47   1          delayus();
+  48   1      }
+  49          /*---------------------------------------------------------------
+  50                           IIC结束
+  51          ----------------------------------------------------------------*/
+  52          void stop()
+  53          {
+C51 COMPILER V9.00   51                                                                    02/08/2022 23:49:52 PAGE 2   
+
+  54   1          sda=0;
+  55   1          delayus();
+  56   1          scl=1;                         //scl拉高 sda产生上升沿
+  57   1          delayus();
+  58   1          sda=1;                   
+  59   1          delayus();
+  60   1      }
+  61          /*---------------------------------------------------------------
+  62                           IIC应答
+  63          ----------------------------------------------------------------*/
+  64          void ACK()
+  65          {
+  66   1          uchar i;
+  67   1          scl=1;
+  68   1          delayus();
+  69   1          while((sda=1)&&(i<255))         
+  70   1           i++;                                        
+  71   1          scl=0;                                  
+  72   1          delayus();
+  73   1      }
+  74          /*---------------------------------------------------------------
+  75                        写一个字节
+  76          ----------------------------------------------------------------*/
+  77          void write_byte(uchar byte)
+  78          {
+  79   1          uchar i,temp;
+  80   1          temp=byte;
+  81   1          for(i=0;i<8;i++)
+  82   1          {
+  83   2              temp=temp<<1;  
+  84   2              scl=0;                  
+  85   2              delayus();
+  86   2              sda=CY;                 
+  87   2              delayus();
+  88   2              scl=1;           
+  89   2              delayus();
+  90   2          }
+  91   1          scl=0;                  
+  92   1          delayus();
+  93   1          sda=1;                 
+  94   1          delayus();
+  95   1      }
+  96          /*---------------------------------------------------------------
+  97                  adder：模块的硬件地址
+  98                  num：通道 0-15
+  99                  off为0-180,off大于等于200时不输出信号，此时释放舵机
+ 100          ----------------------------------------------------------------*/
+ 101          void setPWM(uchar adder,uchar num,uchar off) 
+ 102          {
+ 103   1              start();
+ 104   1              write_byte(adder);       
+ 105   1              ACK();                          
+ 106   1              write_byte(num);  
+ 107   1              ACK();
+ 108   1              write_byte(off); 
+ 109   1              ACK();
+ 110   1              stop();
+ 111   1      }
+ 112          void LU9685_reset(uchar adder) 
+ 113          {
+ 114   1              start();
+ 115   1              write_byte(adder);       
+C51 COMPILER V9.00   51                                                                    02/08/2022 23:49:52 PAGE 3   
+
+ 116   1              ACK();                          
+ 117   1              write_byte(0xFB);  
+ 118   1              ACK();
+ 119   1              write_byte(0xFB); 
+ 120   1              ACK();
+ 121   1              stop();
+ 122   1      }
+ 123          void main()
+ 124          {   
+ 125   1              uchar m,n;
+ 126   1              //IIC-IO初始化
+ 127   1          init();
+ 128   1              //软复位
+ 129   1              LU9685_reset(LU9685_adrr1);         
+ 130   1          while(1)
+ 131   1              {
+ 132   2                      for(n=0;n<16;n++)
+ 133   2                      {
+ 134   3                              for(m=0;m<=180;m++)
+ 135   3                              {
+ 136   4                                      setPWM(LU9685_adrr1,n,m);                                               
+ 137   4                              }                                       
+ 138   3                      }
+ 139   2                      delayms(500);   
+ 140   2                      for(n=0;n<16;n++)
+ 141   2                      {
+ 142   3                              for(m=0;m<=180;m++)
+ 143   3                              {
+ 144   4                                      setPWM(LU9685_adrr1,15-n,180-m);                                                
+ 145   4                              }                                       
+ 146   3                      }               
+ 147   2                      delayms(500);                                                                                   
+ 148   2              }
+ 149   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    262    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

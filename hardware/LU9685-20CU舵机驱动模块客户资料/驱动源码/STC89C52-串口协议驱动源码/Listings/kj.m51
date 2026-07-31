@@ -1,0 +1,224 @@
+BL51 BANKED LINKER/LOCATER V6.22                                                        02/08/2022  23:49:09  PAGE 1
+
+
+BL51 BANKED LINKER/LOCATER V6.22, INVOKED BY:
+D:\KEIL_51\C51\BIN\BL51.EXE .\Objects\STARTUP.obj, .\Objects\51.obj TO .\Objects\kj PRINT (.\Listings\kj.m51) RAMSIZE (2
+>> 56)
+
+
+MEMORY MODEL: SMALL
+
+
+INPUT MODULES INCLUDED:
+  .\Objects\STARTUP.obj (?C_STARTUP)
+  .\Objects\51.obj (51)
+
+
+LINK MAP OF MODULE:  .\Objects\kj (?C_STARTUP)
+
+
+            TYPE    BASE      LENGTH    RELOCATION   SEGMENT NAME
+            -----------------------------------------------------
+
+            * * * * * * *   D A T A   M E M O R Y   * * * * * * *
+            REG     0000H     0008H     ABSOLUTE     "REG BANK 0"
+            IDATA   0008H     0001H     UNIT         ?STACK
+
+            * * * * * * *   C O D E   M E M O R Y   * * * * * * *
+            CODE    0000H     0003H     ABSOLUTE     
+            CODE    0003H     004EH     UNIT         ?PR?MAIN?51
+            CODE    0051H     001EH     UNIT         ?PR?_DELAYMS?51
+            CODE    006FH     0016H     UNIT         ?PR?_SETPWM?51
+            CODE    0085H     0014H     UNIT         ?PR?UART_INIT?51
+            CODE    0099H     0012H     UNIT         ?PR?_LU9685_RESET?51
+            CODE    00ABH     000FH     UNIT         ?PR?_UART_SEND_BYTE?51
+            CODE    00BAH     000CH     UNIT         ?C_C51STARTUP
+
+
+
+OVERLAY MAP OF MODULE:   .\Objects\kj (?C_STARTUP)
+
+
+SEGMENT
+  +--> CALLED SEGMENT
+---------------------
+?C_C51STARTUP
+  +--> ?PR?MAIN?51
+
+?PR?MAIN?51
+  +--> ?PR?UART_INIT?51
+  +--> ?PR?_LU9685_RESET?51
+  +--> ?PR?_SETPWM?51
+  +--> ?PR?_DELAYMS?51
+
+?PR?_LU9685_RESET?51
+  +--> ?PR?_UART_SEND_BYTE?51
+
+?PR?_SETPWM?51
+  +--> ?PR?_UART_SEND_BYTE?51
+
+
+
+BL51 BANKED LINKER/LOCATER V6.22                                                      02/08/2022  23:49:09  PAGE 2
+
+
+SYMBOL TABLE OF MODULE:  .\Objects\kj (?C_STARTUP)
+
+  VALUE           TYPE          NAME
+  ----------------------------------
+
+  -------         MODULE        ?C_STARTUP
+  C:00BAH         SEGMENT       ?C_C51STARTUP
+  I:0008H         SEGMENT       ?STACK
+  C:0000H         PUBLIC        ?C_STARTUP
+  D:00E0H         SYMBOL        ACC
+  D:00F0H         SYMBOL        B
+  D:0083H         SYMBOL        DPH
+  D:0082H         SYMBOL        DPL
+  N:0000H         SYMBOL        IBPSTACK
+  N:0100H         SYMBOL        IBPSTACKTOP
+  N:0080H         SYMBOL        IDATALEN
+  C:00BDH         SYMBOL        IDATALOOP
+  N:0000H         SYMBOL        PBPSTACK
+  N:0100H         SYMBOL        PBPSTACKTOP
+  N:0000H         SYMBOL        PDATALEN
+  N:0000H         SYMBOL        PDATASTART
+  N:0000H         SYMBOL        PPAGE
+  N:0000H         SYMBOL        PPAGEENABLE
+  D:00A0H         SYMBOL        PPAGE_SFR
+  D:0081H         SYMBOL        SP
+  C:00BAH         SYMBOL        STARTUP1
+  N:0000H         SYMBOL        XBPSTACK
+  N:0000H         SYMBOL        XBPSTACKTOP
+  N:0000H         SYMBOL        XDATALEN
+  N:0000H         SYMBOL        XDATASTART
+  C:0000H         LINE#         126
+  C:00BAH         LINE#         133
+  C:00BCH         LINE#         134
+  C:00BDH         LINE#         135
+  C:00BEH         LINE#         136
+  C:00C0H         LINE#         185
+  C:00C3H         LINE#         196
+  -------         ENDMOD        ?C_STARTUP
+
+  -------         MODULE        51
+  C:0000H         SYMBOL        _ICE_DUMMY_
+  D:0090H         PUBLIC        P1
+  C:00B2H         PUBLIC        _Uart_Send_Byte
+  D:00A0H         PUBLIC        P2
+  D:00B0H         PUBLIC        P3
+  C:0099H         PUBLIC        _LU9685_reset
+  B:00A8H.7       PUBLIC        EA
+  D:00A8H         PUBLIC        IE
+  D:00B8H         PUBLIC        IP
+  B:0098H.1       PUBLIC        TI
+  C:0003H         PUBLIC        main
+  D:0099H         PUBLIC        SBUF
+  D:0087H         PUBLIC        PCON
+  C:0085H         PUBLIC        UART_Init
+  D:0098H         PUBLIC        SCON
+  D:0089H         PUBLIC        TMOD
+  D:0088H         PUBLIC        TCON
+BL51 BANKED LINKER/LOCATER V6.22                                                      02/08/2022  23:49:09  PAGE 3
+
+
+  C:006FH         PUBLIC        _setPWM
+  D:008DH         PUBLIC        TH1
+  D:008BH         PUBLIC        TL1
+  B:0088H.6       PUBLIC        TR1
+  D:00C8H         PUBLIC        T2CON
+  C:0051H         PUBLIC        _delayms
+  D:00D0H         PUBLIC        PSW
+  -------         PROC          _DELAYMS
+  D:0006H         SYMBOL        z
+  -------         DO            
+  D:0006H         SYMBOL        x
+  D:0004H         SYMBOL        y
+  -------         ENDDO         
+  C:0051H         LINE#         10
+  C:0051H         LINE#         11
+  C:0051H         LINE#         13
+  C:005AH         LINE#         14
+  C:006EH         LINE#         15
+  -------         ENDPROC       _DELAYMS
+  -------         PROC          L?0031
+  -------         ENDPROC       L?0031
+  -------         PROC          _UART_SEND_BYTE
+  D:0007H         SYMBOL        c
+  C:00B2H         LINE#         19
+  C:00B2H         LINE#         20
+  C:00B2H         LINE#         21
+  C:00B4H         LINE#         22
+  C:00B7H         LINE#         23
+  C:00B9H         LINE#         24
+  -------         ENDPROC       _UART_SEND_BYTE
+  -------         PROC          UART_INIT
+  C:0085H         LINE#         31
+  C:0085H         LINE#         32
+  C:0085H         LINE#         33
+  C:0088H         LINE#         34
+  C:008BH         LINE#         35
+  C:008EH         LINE#         36
+  C:0091H         LINE#         37
+  C:0094H         LINE#         38
+  C:0096H         LINE#         39
+  C:0098H         LINE#         40
+  -------         ENDPROC       UART_INIT
+  -------         PROC          _SETPWM
+  D:0006H         SYMBOL        adder
+  D:0005H         SYMBOL        num
+  D:0004H         SYMBOL        off
+  C:006FH         LINE#         46
+  C:0073H         LINE#         47
+  C:0073H         LINE#         48
+  C:0073H         LINE#         49
+  C:0076H         LINE#         50
+  C:007BH         LINE#         51
+  C:0080H         LINE#         52
+  -------         ENDPROC       _SETPWM
+  -------         PROC          _LU9685_RESET
+  D:0006H         SYMBOL        adder
+  C:0099H         LINE#         54
+BL51 BANKED LINKER/LOCATER V6.22                                                      02/08/2022  23:49:09  PAGE 4
+
+
+  C:009BH         LINE#         55
+  C:009BH         LINE#         56
+  C:009BH         LINE#         57
+  C:009EH         LINE#         58
+  C:00A3H         LINE#         59
+  C:00A6H         LINE#         60
+  -------         ENDPROC       _LU9685_RESET
+  -------         PROC          MAIN
+  -------         DO            
+  D:0002H         SYMBOL        m
+  D:0001H         SYMBOL        n
+  -------         ENDDO         
+  C:0003H         LINE#         62
+  C:0003H         LINE#         63
+  C:0003H         LINE#         66
+  C:0006H         LINE#         68
+  C:000BH         LINE#         69
+  C:000BH         LINE#         70
+  C:000BH         LINE#         71
+  C:000DH         LINE#         72
+  C:000DH         LINE#         73
+  C:000FH         LINE#         74
+  C:000FH         LINE#         75
+  C:0018H         LINE#         76
+  C:001FH         LINE#         77
+  C:0023H         LINE#         78
+  C:002AH         LINE#         79
+  C:002CH         LINE#         80
+  C:002CH         LINE#         81
+  C:002EH         LINE#         82
+  C:002EH         LINE#         83
+  C:003DH         LINE#         84
+  C:0044H         LINE#         85
+  C:0048H         LINE#         86
+  C:004FH         LINE#         87
+  -------         ENDPROC       MAIN
+  -------         ENDMOD        51
+
+Program Size: data=9.0 xdata=0 code=198
+LINK/LOCATE RUN COMPLETE.  0 WARNING(S),  0 ERROR(S)
