@@ -17,7 +17,8 @@
  *    to connect straight to the WallE AP). Do not commit credentials.
  * 2. Select your camera board in camera_pins.h.
  * 3. Install the esp32 board package (Arduino-ESP32 core 3.x - the
- *    bundled esp32-camera library is used, no extra install needed).
+ *    bundled esp32-camera library is used) plus the Arduino_GFX
+ *    library (moononournation, for the eye displays).
  * 4. Upload, open the serial monitor (115200) and note the IP address.
  * 5. Enter that address as stream_url in wall-e_esp32/data/index.html
  *    (e.g. "http://192.168.4.3/stream") and re-upload LittleFS data.
@@ -25,15 +26,22 @@
  * Endpoints:
  *   /        -> plain text status page (module name + stream URL + SD status)
  *   /stream  -> MJPEG stream (point the web interface here)
+ *   /eyes    -> eye expression: /eyes?expr=neutral|sad|left|right
  *   /capture -> take a photo, save JPEG to SD (/photos/IMG_nnnn.jpg)
  *   /record?action=start|stop -> record MJPEG video as AVI (/videos/VID_nnnn.avi)
  *   /files   -> JSON list of photos/videos on the SD card
  *   /file?path=... -> download (GET) or delete (DELETE) a file
  *
- * SD card (XIAO ESP32-S3 Sense expansion board, microSD slot):
- *   The slot is wired on-board via SPI (CS=2, SCK=7, MISO=8, MOSI=9) -
- *   just insert a FAT32 microSD card, no extra wiring. Without a card
- *   the stream keeps working; the SD endpoints return an error.
+ * Eye displays (third-party kit, CONFIRMED wiring 2026-07-31):
+ *   Two round 1.28" 240x240 displays (driver assumed GC9A01) on a shared
+ *   SPI bus: SCK=42, MOSI=45, DC=41, RST=46; per-display CS ("L/R" pin):
+ *   left=2, right=0. See eye_display.h.
+ *
+ * SD card (pins follow the XIAO ESP32-S3 Sense preset - UNVERIFIED for
+ * the actual generic ESP32-S3-CAM module, see NEW_HARDWARE_MIGRATION.md
+ * Step 4.5; SD_CS_PIN=2 conflicts with the left eye CS):
+ *   CS=2, SCK=7, MISO=8, MOSI=9, FAT32 card. Without a working card the
+ *   stream keeps working; the SD endpoints return an error.
  */
 
 #include <WiFi.h>
@@ -43,6 +51,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include "avi_writer.h"
+#include "eye_display.h"
 
 
 /// Wi-Fi configuration
@@ -60,7 +69,12 @@
 #define CAM_FRAME_SIZE     FRAMESIZE_VGA   // 640x480; drop to FRAMESIZE_SVGA/QVGA if flaky
 #define CAM_JPEG_QUALITY   12              // 0-63, lower = better quality / larger frames
 
-// SD card (XIAO ESP32-S3 Sense expansion board microSD slot, SPI mode)
+// SD card (SPI mode). WARNING: these pins follow the XIAO ESP32-S3 Sense
+// preset and are UNVERIFIED for the actual generic "ESP32-S3-CAM" module
+// (docs/NEW_HARDWARE_MIGRATION.md Step 4.5). SD_CS_PIN=2 also CONFLICTS
+// with the confirmed eye-display wiring (EYE_L_CS=2, eye_display.h) -
+// when the real SD pins are known, SD CS must move off GPIO2. If the SD
+// init disturbs the eyes meanwhile, set CAM_SD_ENABLED to 0.
 #define CAM_SD_ENABLED     1    // set 0 to compile without SD support
 #define SD_CS_PIN          2
 #define SD_SCK_PIN         7
@@ -121,6 +135,11 @@ static esp_err_t indexHandler(httpd_req_t *req) {
 	String page = "Wall-E camera module is running.\n";
 	page += "MJPEG stream: http://" + WiFi.localIP().toString() + "/stream\n";
 	page += "Set this as stream_url in wall-e_esp32/data/index.html\n";
+#if EYE_DISPLAYS_ENABLED
+	page += String("Eye displays: on (expr=") + eyeDisplayExpressionName() + ", /eyes?expr=neutral|sad|left|right)\n";
+#else
+	page += "Eye displays: disabled at compile time\n";
+#endif
 #if CAM_SD_ENABLED
 	page += sd_ready ? "SD card: ready\n" : "SD card: NOT available (photo/video disabled)\n";
 	page += recording ? "Recording: yes\n" : "Recording: no\n";
@@ -128,6 +147,46 @@ static esp_err_t indexHandler(httpd_req_t *req) {
 #endif
 	httpd_resp_set_type(req, "text/plain");
 	return httpd_resp_send(req, page.c_str(), page.length());
+}
+
+
+// -------------------------------------------------------------------
+/// Shared HTTP helpers
+// -------------------------------------------------------------------
+
+static esp_err_t SendJson(httpd_req_t *req, const String& json) {
+	httpd_resp_set_type(req, "application/json");
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+	return httpd_resp_send(req, json.c_str(), json.length());
+}
+
+/// Query parameter helper: /record?action=start -> "start"
+static bool QueryParam(httpd_req_t *req, const char* key, char* out, size_t out_size) {
+	size_t qlen = httpd_req_get_url_query_len(req);
+	if (qlen == 0 || qlen > 128) return false;
+	char query[129];
+	if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) return false;
+	return httpd_query_key_value(query, key, out, out_size) == ESP_OK;
+}
+
+
+// -------------------------------------------------------------------
+/// Eye display endpoint: /eyes?expr=neutral|sad|left|right
+// -------------------------------------------------------------------
+/// Called with no query it just reports the current expression.
+
+static esp_err_t EyesHandler(httpd_req_t *req) {
+#if EYE_DISPLAYS_ENABLED
+	char expr[16];
+	if (QueryParam(req, "expr", expr, sizeof(expr))) {
+		if (!eyeDisplaySetByName(expr)) {
+			return SendJson(req, String("{\"status\":\"Error\",\"msg\":\"unknown expr '") + expr + "' (neutral|sad|left|right)\"}");
+		}
+	}
+	return SendJson(req, String("{\"status\":\"OK\",\"expr\":\"") + eyeDisplayExpressionName() + "\"}");
+#else
+	return SendJson(req, "{\"status\":\"Error\",\"msg\":\"eye displays disabled at compile time\"}");
+#endif
 }
 
 
@@ -145,12 +204,6 @@ static uint32_t record_frames = 0;
 static unsigned long record_start_ms = 0;
 
 
-static esp_err_t SendJson(httpd_req_t *req, const String& json) {
-	httpd_resp_set_type(req, "application/json");
-	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-	return httpd_resp_send(req, json.c_str(), json.length());
-}
-
 static esp_err_t SendSdError(httpd_req_t *req, const char* msg) {
 	return SendJson(req, String("{\"status\":\"Error\",\"msg\":\"") + msg + "\"}");
 }
@@ -161,15 +214,6 @@ static void NextSdPath(char* out, size_t size, const char* dir, const char* pref
 		snprintf(out, size, "%s/%s_%04d%s", dir, prefix, i, ext);
 		if (!SD.exists(out)) return;
 	}
-}
-
-/// Query parameter helper: /record?action=start -> "start"
-static bool QueryParam(httpd_req_t *req, const char* key, char* out, size_t out_size) {
-	size_t qlen = httpd_req_get_url_query_len(req);
-	if (qlen == 0 || qlen > 128) return false;
-	char query[129];
-	if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) return false;
-	return httpd_query_key_value(query, key, out, out_size) == ESP_OK;
 }
 
 /// Pixel dimensions of the configured frame size (compile-time, no sensor query)
@@ -408,8 +452,10 @@ static void startStreamServer() {
 
 	httpd_uri_t indexUri = {"/", HTTP_GET, indexHandler, nullptr};
 	httpd_uri_t streamUri = {"/stream", HTTP_GET, streamHandler, nullptr};
+	httpd_uri_t eyesUri = {"/eyes", HTTP_GET, EyesHandler, nullptr};
 	httpd_register_uri_handler(server, &indexUri);
 	httpd_register_uri_handler(server, &streamUri);
+	httpd_register_uri_handler(server, &eyesUri);
 
 #if CAM_SD_ENABLED
 	httpd_uri_t captureUri = {"/capture", HTTP_GET, CaptureHandler, nullptr};
@@ -497,6 +543,10 @@ void setup() {
 	Serial.begin(115200);
 	Serial.println(F("--- Wall-E Camera Module (ESP32-S3) ---"));
 
+	// Eyes first: they are confirmed wiring and serve as a life sign
+	// during board bring-up, even if camera init fails below.
+	eyeDisplayInit();
+
 	if (!initCamera()) {
 		// Without a camera there is nothing to do; halt here
 		while (true) delay(1000);
@@ -532,6 +582,9 @@ void setup() {
 }
 
 void loop() {
-	// The HTTP server runs in its own task; nothing to do here
-	delay(1000);
+	// The HTTP server runs in its own task; the eyes only need periodic
+	// blink updates here (each blink frame blocks ~10-30ms for the
+	// full-screen redraw, same as the archived ESP32 firmware).
+	eyeDisplayLoop();
+	delay(10);
 }
