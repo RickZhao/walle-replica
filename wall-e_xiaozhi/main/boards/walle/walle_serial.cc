@@ -10,18 +10,28 @@
  *
  * Reads stdin (USB CDC / USB-Serial-JTAG console) in a dedicated task
  * and dispatches through WalleMotion::EvaluateCommand().
+ *
+ * Disabled by default on the current hardware: GPIO19/GPIO20 (native
+ * USB D-/D+) are used by PWMA and servo-I2C SDA, so the USB console is
+ * unavailable. Enable via WALLE_SERIAL_ENABLED in config.h only if the
+ * console is repointed to UART0.
  */
 
 #include "walle_motion.h"
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_log.h>
 
 #define MAX_SERIAL_LENGTH 5
 
+#define TAG "WalleSerial"
 
+
+#if WALLE_SERIAL_ENABLED
 static void SerialTask(void*) {
     char first_char = 0;
     char buffer[MAX_SERIAL_LENGTH];
@@ -67,8 +77,13 @@ static void SerialTask(void*) {
         }
     }
 }
+#endif  // WALLE_SERIAL_ENABLED
 
 
 void WalleSerialStart() {
+#if WALLE_SERIAL_ENABLED
     xTaskCreate(SerialTask, "walle_serial", 2048, nullptr, 3, nullptr);
+#else
+    ESP_LOGW(TAG, "USB serial task disabled (GPIO19/20 used by motors/servo I2C)");
+#endif
 }

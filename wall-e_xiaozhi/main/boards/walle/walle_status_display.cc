@@ -4,9 +4,12 @@
  * @file    walle_status_display.cc
  * @brief   Implementation, see walle_status_display.h
  *
- * The GC9A01 eye display is created first by the board and initialises
- * the esp_lvgl_port task; this class only adds a second lv_display to
- * the same port. All LVGL access happens under lvgl_port_lock().
+ * The ST7789 sits on its own SPI bus (SPI2_HOST), separate from the
+ * GC9A01 eye display, and the 7-pin module has no CS line. When the eye
+ * display is enabled the board initialises the esp_lvgl_port task first
+ * and this class only adds a second lv_display to the same port;
+ * otherwise it initialises the LVGL port itself.
+ * All LVGL access happens under lvgl_port_lock().
  */
 
 #include "walle_status_display.h"
@@ -20,6 +23,7 @@
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <esp_lvgl_port.h>
+#include <driver/gpio.h>
 #include <driver/spi_master.h>
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
@@ -53,7 +57,21 @@ esp_err_t WalleStatusDisplay::Init() {
     impl_ = new Impl();
     if (!impl_) return ESP_ERR_NO_MEM;
 
-    // Panel IO on the shared SPI bus (initialised with the GC9A01)
+    // Dedicated SPI bus for the ST7789 (separate from the eye display)
+    spi_bus_config_t bus_cfg = {};
+    bus_cfg.sclk_io_num = STATUS_SPI_SCLK_PIN;
+    bus_cfg.mosi_io_num = STATUS_SPI_MOSI_PIN;
+    bus_cfg.miso_io_num = GPIO_NUM_NC;
+    bus_cfg.quadwp_io_num = GPIO_NUM_NC;
+    bus_cfg.quadhd_io_num = GPIO_NUM_NC;
+    bus_cfg.max_transfer_sz = STATUS_DISPLAY_WIDTH * STATUS_DISPLAY_HEIGHT * sizeof(uint16_t);
+    esp_err_t ret = spi_bus_initialize(SPI2_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ST7789 SPI bus init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Panel IO; the 7-pin module has no CS line (cs_gpio_num = NC)
     esp_lcd_panel_io_spi_config_t io_cfg = {};
     io_cfg.cs_gpio_num = STATUS_SPI_CS_PIN;
     io_cfg.dc_gpio_num = STATUS_SPI_DC_PIN;
@@ -62,15 +80,14 @@ esp_err_t WalleStatusDisplay::Init() {
     io_cfg.trans_queue_depth = 10;
     io_cfg.lcd_cmd_bits = 8;
     io_cfg.lcd_param_bits = 8;
-    esp_err_t ret = esp_lcd_new_panel_io_spi(SPI3_HOST, &io_cfg, &impl_->io);
+    ret = esp_lcd_new_panel_io_spi(SPI2_HOST, &io_cfg, &impl_->io);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "ST7789 panel IO failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
-    // Reset pin is shared with the GC9A01 and already toggled - skip it here
     esp_lcd_panel_dev_config_t panel_cfg = {};
-    panel_cfg.reset_gpio_num = GPIO_NUM_NC;
+    panel_cfg.reset_gpio_num = STATUS_SPI_RESET_PIN;
     panel_cfg.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR;
     panel_cfg.bits_per_pixel = 16;
     ret = esp_lcd_new_panel_st7789(impl_->io, &panel_cfg, &impl_->panel);
@@ -84,7 +101,25 @@ esp_err_t WalleStatusDisplay::Init() {
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(impl_->panel, STATUS_DISPLAY_MIRROR_X, STATUS_DISPLAY_MIRROR_Y));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(impl_->panel, true));
 
-    // Add as a second LVGL display on the existing esp_lvgl_port task
+    // Backlight on (simple GPIO; dimming not needed on the status screen)
+    gpio_config_t bl_cfg = {};
+    bl_cfg.pin_bit_mask = 1ULL << STATUS_SPI_BL_PIN;
+    bl_cfg.mode = GPIO_MODE_OUTPUT;
+    gpio_config(&bl_cfg);
+    gpio_set_level(STATUS_SPI_BL_PIN, 1);
+
+#if !EYE_DISPLAY_ENABLED
+    // The eye display normally initialises the LVGL port task; without
+    // it this screen owns the port.
+    lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    ret = lvgl_port_init(&port_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL port init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+#endif
+
+    // Add as a second LVGL display on the esp_lvgl_port task
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = impl_->io,
         .panel_handle = impl_->panel,

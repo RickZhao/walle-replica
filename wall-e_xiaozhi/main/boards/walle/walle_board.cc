@@ -1,10 +1,15 @@
 /**
  * Wall-E voice robot board (xiaozhi-esp32 port)
  *
- * Single-MCU design on ESP32-S3 N16R8:
+ * Single-MCU design on ESP32-S3 N16R8 (third-party Wall-E kit, see
+ * hardware/另一套硬件方案.md):
  *   - Voice: INMP441 mic + PCM5102 DAC (NoAudioCodecSimplex)
  *   - Eyes:  single GC9A01 1.28" round 240x240 display (LVGL via SpiLcdDisplay)
- *   - Motion: TB6612 motors + LU9685/PCA9685 servos (walle_motion, stage 2)
+ *            DISABLED until the eye-display wiring is confirmed
+ *            (EYE_DISPLAY_ENABLED in config.h)
+ *   - Status: ST7789 1.3" 240x240 on its own SPI bus (walle_status_display)
+ *   - Motion: TB6612 motors + LU9685/PCA9685 servos (walle_motion)
+ *   - Buttons: BOOT (chat/config), volume +/- and long-press restart
  *   - Network: Wi-Fi first, ML307A 4G fallback on connect timeout
  *     (DualNetworkBoard; double-click BOOT to switch manually)
  *
@@ -28,6 +33,7 @@
 #include "walle_cam_viewer.h"
 
 #include <esp_log.h>
+#include <esp_system.h>
 #include <driver/spi_master.h>
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
@@ -43,11 +49,15 @@ class WalleBoard : public DualNetworkBoard {
 private:
     Display* display_ = nullptr;
     Button boot_button_;
+    Button volume_up_button_;
+    Button volume_down_button_;
+    Button reset_button_;
     NetworkEventCallback app_callback_;
     // Distinguishes a user-requested Wi-Fi config mode from the connect-timeout
     // path (which triggers the automatic 4G fallback instead).
     bool manual_config_request_ = false;
 
+#if EYE_DISPLAY_ENABLED
     void InitializeSpi() {
         ESP_LOGI(TAG, "Initialize SPI bus");
         spi_bus_config_t buscfg = GC9A01_PANEL_BUS_SPI_CONFIG(DISPLAY_SPI_SCLK_PIN, DISPLAY_SPI_MOSI_PIN,
@@ -85,6 +95,7 @@ private:
                                      DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y,
                                      DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
     }
+#endif  // EYE_DISPLAY_ENABLED
 
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
@@ -113,13 +124,56 @@ private:
                 SwitchNetworkType();
             }
         });
+
+        // Volume +/- (same behaviour as bread-compact-wifi)
+        volume_up_button_.OnClick([this]() {
+            auto codec = GetAudioCodec();
+            auto volume = codec->output_volume() + 10;
+            if (volume > 100) {
+                volume = 100;
+            }
+            codec->SetOutputVolume(volume);
+            GetDisplay()->ShowNotification(Lang::Strings::VOLUME + std::to_string(volume));
+        });
+        volume_up_button_.OnLongPress([this]() {
+            GetAudioCodec()->SetOutputVolume(100);
+            GetDisplay()->ShowNotification(Lang::Strings::MAX_VOLUME);
+        });
+        volume_down_button_.OnClick([this]() {
+            auto codec = GetAudioCodec();
+            auto volume = codec->output_volume() - 10;
+            if (volume < 0) {
+                volume = 0;
+            }
+            codec->SetOutputVolume(volume);
+            GetDisplay()->ShowNotification(Lang::Strings::VOLUME + std::to_string(volume));
+        });
+        volume_down_button_.OnLongPress([this]() {
+            GetAudioCodec()->SetOutputVolume(0);
+            GetDisplay()->ShowNotification(Lang::Strings::MUTED);
+        });
+
+        // Dedicated long-press restart button
+        reset_button_.OnLongPress([]() {
+            esp_restart();
+        });
     }
 
 public:
     WalleBoard() : DualNetworkBoard(ML307_TX_PIN, ML307_RX_PIN, ML307_DTR_PIN, /*default_net_type=*/0),
-        boot_button_(BOOT_BUTTON_GPIO) {
+        boot_button_(BOOT_BUTTON_GPIO),
+        volume_up_button_(VOLUME_UP_BUTTON_GPIO),
+        volume_down_button_(VOLUME_DOWN_BUTTON_GPIO),
+        reset_button_(RESET_BUTTON_GPIO) {
+#if EYE_DISPLAY_ENABLED
         InitializeSpi();
         InitializeDisplay();
+#else
+        // Eye-display wiring unconfirmed (conflicts with the new hardware
+        // pin map) - run without it until config.h is updated.
+        ESP_LOGW(TAG, "Eye display disabled (EYE_DISPLAY_ENABLED=0)");
+        display_ = new NoDisplay();
+#endif
         InitializeButtons();
 
         // Motion core (servos/motors/animations), MCP tools and the
@@ -132,12 +186,10 @@ public:
         WalleSerialStart();
 
 #if STATUS_DISPLAY_ENABLED
-        // Secondary ST7789 status screen (needs the LVGL port already
-        // initialised by the main display above)
-        if (display_ != nullptr) {
-            if (WalleStatusDisplay::GetInstance().Init() != ESP_OK) {
-                ESP_LOGE(TAG, "Status display failed to start - continuing without it");
-            }
+        // Secondary ST7789 status screen on its own SPI bus. When the eye
+        // display is disabled it initialises the LVGL port itself.
+        if (WalleStatusDisplay::GetInstance().Init() != ESP_OK) {
+            ESP_LOGE(TAG, "Status display failed to start - continuing without it");
         }
 #endif
 
@@ -180,8 +232,12 @@ public:
     }
 
     virtual Backlight* GetBacklight() override {
+#if EYE_DISPLAY_ENABLED
         static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT);
         return &backlight;
+#else
+        return nullptr;
+#endif
     }
 };
 

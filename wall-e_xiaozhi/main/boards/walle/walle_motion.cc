@@ -125,14 +125,19 @@ bool WalleMotion::auto_mode() const {
 // -------------------------------------------------------------------
 
 static void MotorsInit() {
-    // Direction + standby pins
+    // Direction + standby pins (STBY is tied to 5V on this hardware -
+    // the driver is always enabled and the firmware does not drive it)
     gpio_config_t cfg = {};
     cfg.pin_bit_mask = (1ULL << MOTOR_AIN1_GPIO) | (1ULL << MOTOR_AIN2_GPIO) |
-                       (1ULL << MOTOR_BIN1_GPIO) | (1ULL << MOTOR_BIN2_GPIO) |
-                       (1ULL << MOTOR_STBY_GPIO);
+                       (1ULL << MOTOR_BIN1_GPIO) | (1ULL << MOTOR_BIN2_GPIO);
+#if MOTOR_STBY_WIRED
+    cfg.pin_bit_mask |= (1ULL << MOTOR_STBY_GPIO);
+#endif
     cfg.mode = GPIO_MODE_OUTPUT;
     gpio_config(&cfg);
+#if MOTOR_STBY_WIRED
     gpio_set_level(MOTOR_STBY_GPIO, 1);     // leave standby
+#endif
 
     // PWM timer: 20kHz 8-bit (inaudible)
     ledc_timer_config_t timer = {};
