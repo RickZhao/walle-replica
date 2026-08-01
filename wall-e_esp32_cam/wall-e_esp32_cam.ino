@@ -18,7 +18,8 @@
  * 2. Select your camera board in camera_pins.h.
  * 3. Install the esp32 board package (Arduino-ESP32 core 3.x - the
  *    bundled esp32-camera library is used) plus the Arduino_GFX
- *    library (moononournation, for the eye displays).
+ *    library (moononournation, for the eye displays) and the JPEGDEC
+ *    library (bitbank2, for the eye-display photo preview).
  * 4. Upload, open the serial monitor (115200) and note the IP address.
  * 5. Enter that address as stream_url in wall-e_esp32/data/index.html
  *    (e.g. "http://192.168.4.3/stream") and re-upload LittleFS data.
@@ -31,6 +32,15 @@
  *   /record?action=start|stop -> record MJPEG video as AVI (/videos/VID_nnnn.avi)
  *   /files   -> JSON list of photos/videos on the SD card
  *   /file?path=... -> download (GET) or delete (DELETE) a file
+ *
+ * UART link to the main controller (CAM_PROTOCOL v1, CAM side -
+ * docs/CAM_PROTOCOL.md, implemented in cam_link.h):
+ *   Serial1, 115200 8N1, RX=GPIO14 / TX=GPIO21 (pins UNVERIFIED, see
+ *   NEW_HARDWARE_MIGRATION.md Step 4.5). Line-based text commands:
+ *   HELLO / PING / STATUS / EYES / PHOTO (3-2-1 countdown on the eye
+ *   displays + 5s local JPEG preview) / REC START|STOP / SHOW / ABORT
+ *   / LIST photos. All HTTP endpoints above remain available as the
+ *   fallback channel.
  *
  * Eye displays (third-party kit, CONFIRMED wiring 2026-07-31):
  *   Two round 1.28" 240x240 displays (driver assumed GC9A01) on a shared
@@ -198,10 +208,15 @@ static esp_err_t EyesHandler(httpd_req_t *req) {
 
 // Recording state (driven by /record, worker task below)
 static volatile bool record_stop_request = false;
+static volatile bool record_abnormal = false;   // task ended on its own (SD/write/frame-grab failure)
 static TaskHandle_t record_task = nullptr;
 static char record_path[40];
 static uint32_t record_frames = 0;
 static unsigned long record_start_ms = 0;
+
+// Defined in cam_link.h (included further below): reports an abnormal
+// recording stop to the main controller as "EVT REC_DONE <path> <frames>".
+void camLinkNotifyRecDone(const char* path, uint32_t frames);
 
 
 static esp_err_t SendSdError(httpd_req_t *req, const char* msg) {
@@ -256,6 +271,7 @@ static void RecordTask(void*) {
 	File f = SD.open(record_path, FILE_WRITE);
 	if (!f) {
 		Serial.printf("Record: cannot open %s\n", record_path);
+		record_abnormal = true;
 	} else {
 		uint16_t w, h;
 		FrameDims(&w, &h);
@@ -264,13 +280,21 @@ static void RecordTask(void*) {
 
 		const TickType_t interval = pdMS_TO_TICKS(1000 / REC_FPS);
 		TickType_t next = xTaskGetTickCount();
+		int grab_fail_streak = 0;
 		while (!record_stop_request) {
 			camera_fb_t *fb = esp_camera_fb_get();
 			if (fb) {
-				avi.AddFrame(fb->buf, fb->len);
-				record_frames++;
+				grab_fail_streak = 0;
+				if (!avi.AddFrame(fb->buf, fb->len)) {
+					record_abnormal = true;   // SD write failure (e.g. card full)
+				} else {
+					record_frames++;
+				}
 				esp_camera_fb_return(fb);
+			} else if (++grab_fail_streak >= 20) {
+				record_abnormal = true;       // persistent frame-grab failure
 			}
+			if (record_abnormal) break;
 			// If the frame grab overran the interval this returns immediately
 			vTaskDelayUntil(&next, interval);
 		}
@@ -280,7 +304,46 @@ static void RecordTask(void*) {
 	}
 	recording = false;
 	record_task = nullptr;
+	// Abnormal termination is reported to the main controller as
+	// EVT REC_DONE; a normal REC STOP is not (its OK REC OFF response
+	// already carries path + frames - docs/CAM_PROTOCOL.md section 5).
+	if (record_abnormal) camLinkNotifyRecDone(record_path, record_frames);
 	vTaskDelete(nullptr);
+}
+
+
+// -------------------------------------------------------------------
+/// Recording start/stop shared by the HTTP /record endpoint and the
+/// UART cam link (cam_link.h, REC command)
+// -------------------------------------------------------------------
+
+/// Start a recording to a fresh /videos/VID_nnnn.avi path.
+/// @return false when already recording or the worker task failed.
+static bool RecordStart(char* out_path, size_t out_size) {
+	if (recording) return false;
+	NextSdPath(record_path, sizeof(record_path), "/videos", "VID", ".avi");
+	record_frames = 0;
+	record_start_ms = millis();
+	record_stop_request = false;
+	record_abnormal = false;
+	recording = true;
+	if (xTaskCreate(RecordTask, "cam_record", 4096, nullptr, 5, &record_task) != pdPASS) {
+		recording = false;
+		return false;
+	}
+	strncpy(out_path, record_path, out_size);
+	out_path[out_size - 1] = 0;
+	return true;
+}
+
+/// Stop the running recording and wait for the AVI to be finalized.
+/// @return frames written, or -1 when not recording.
+static int32_t RecordStop() {
+	if (!recording) return -1;
+	record_stop_request = true;
+	// Wait for the task to finalize the AVI (max ~3s)
+	for (int i = 0; i < 300 && recording; i++) vTaskDelay(pdMS_TO_TICKS(10));
+	return (int32_t)record_frames;
 }
 
 static esp_err_t RecordHandler(httpd_req_t *req) {
@@ -296,24 +359,17 @@ static esp_err_t RecordHandler(httpd_req_t *req) {
 			const char* name = strrchr(record_path, '/') + 1;
 			return SendJson(req, String("{\"status\":\"OK\",\"msg\":\"already recording\",\"file\":\"") + name + "\"}");
 		}
-		NextSdPath(record_path, sizeof(record_path), "/videos", "VID", ".avi");
-		record_frames = 0;
-		record_start_ms = millis();
-		record_stop_request = false;
-		recording = true;
-		if (xTaskCreate(RecordTask, "cam_record", 4096, nullptr, 5, &record_task) != pdPASS) {
-			recording = false;
+		char path[40];
+		if (!RecordStart(path, sizeof(path))) {
 			return SendSdError(req, "Cannot start record task");
 		}
-		const char* name = strrchr(record_path, '/') + 1;
+		const char* name = strrchr(path, '/') + 1;
 		return SendJson(req, String("{\"status\":\"OK\",\"msg\":\"recording\",\"file\":\"") + name + "\"}");
 	}
 
 	if (strcmp(action, "stop") == 0) {
 		if (!recording) return SendSdError(req, "not recording");
-		record_stop_request = true;
-		// Wait for the task to finalize the AVI (max ~3s)
-		for (int i = 0; i < 300 && recording; i++) vTaskDelay(pdMS_TO_TICKS(10));
+		RecordStop();
 		const char* name = strrchr(record_path, '/') + 1;
 		return SendJson(req, String("{\"status\":\"OK\",\"file\":\"") + name +
 			"\",\"frames\":" + record_frames +
@@ -438,6 +494,12 @@ static bool initSd() {
 
 #endif // CAM_SD_ENABLED
 
+// UART cam link to the main controller (CAM_PROTOCOL v1) - included
+// here so it can reuse the SD / recording helpers defined above
+// (sd_ready, NextSdPath, SanitizeSdPath, RecordStart/RecordStop, ...).
+// See cam_link.h and docs/CAM_PROTOCOL.md.
+#include "cam_link.h"
+
 
 static void startStreamServer() {
 	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -547,9 +609,16 @@ void setup() {
 	// during board bring-up, even if camera init fails below.
 	eyeDisplayInit();
 
+	// UART link to the main controller - before initCamera() so the
+	// link (with its EVT BOOT announcement) is up even if the camera
+	// sensor fails to initialise.
+	camLinkInit();
+
 	if (!initCamera()) {
-		// Without a camera there is nothing to do; halt here
-		while (true) delay(1000);
+		// Without a camera there is nothing to do; halt here, but keep
+		// the UART link responsive so the main controller can still
+		// query status and drive the eye displays.
+		while (true) { camLinkLoop(); delay(10); }
 	}
 
 #if CAM_SD_ENABLED
@@ -586,5 +655,7 @@ void loop() {
 	// blink updates here (each blink frame blocks ~10-30ms for the
 	// full-screen redraw, same as the archived ESP32 firmware).
 	eyeDisplayLoop();
+	// UART cam link: command parsing + photo-flow state machine
+	camLinkLoop();
 	delay(10);
 }

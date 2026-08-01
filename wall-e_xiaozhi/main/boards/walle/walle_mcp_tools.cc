@@ -7,17 +7,18 @@
  *          (function calling). Pattern follows otto-robot's
  *          OttoController::RegisterMcpTools().
  *
- * All tools dispatch through WalleMotion::EvaluateCommand(), so voice
- * commands behave exactly like the serial / web control paths.
+ * All motion tools dispatch through WalleMotion::EvaluateCommand(), so voice
+ * commands behave exactly like the serial / web control paths. Camera and
+ * eye-display actions dispatch through WalleCamLink (CAM_PROTOCOL v1 over
+ * UART1, with HTTP fallback to the cam module, see docs/CAM_PROTOCOL.md).
  */
 
 #include "walle_motion.h"
-#include "walle_cam_viewer.h"
+#include "walle_cam_link.h"
 #include "config.h"
 #include "mcp_server.h"
 
 #include <esp_log.h>
-#include <esp_http_client.h>
 #include <string>
 
 #define TAG "WalleMcpTools"
@@ -41,48 +42,9 @@ static void SendNeck(int n) {
 
 
 // -------------------------------------------------------------------
-/// Camera module HTTP API (wall-e_esp32_cam firmware: /capture, /record)
+/// Camera module access goes through WalleCamLink (UART first, HTTP
+/// fallback) - no local HTTP helpers needed here anymore.
 // -------------------------------------------------------------------
-
-struct CamResponse {
-    std::string body;
-    int status = 0;
-};
-
-static esp_err_t CamHttpEvent(esp_http_client_event_t* evt) {
-    if (evt->event_id == HTTP_EVENT_ON_DATA && evt->user_data && evt->data_len > 0) {
-        auto* resp = static_cast<CamResponse*>(evt->user_data);
-        resp->body.append(static_cast<const char*>(evt->data), evt->data_len);
-    }
-    return ESP_OK;
-}
-
-/// GET CAM_MODULE_URL + path, return the JSON body or an error string.
-static std::string CallCamModule(const std::string& path) {
-    std::string url = std::string(CAM_MODULE_URL) + path;
-    CamResponse resp;
-
-    esp_http_client_config_t cfg = {};
-    cfg.url = url.c_str();
-    cfg.timeout_ms = 3000;
-    cfg.event_handler = CamHttpEvent;
-    cfg.user_data = &resp;
-
-    esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    esp_err_t err = esp_http_client_perform(client);
-    if (err == ESP_OK) resp.status = esp_http_client_get_status_code(client);
-    esp_http_client_cleanup(client);
-
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Camera module unreachable: %s (%s)", url.c_str(), esp_err_to_name(err));
-        return std::string("camera module unreachable: ") + esp_err_to_name(err);
-    }
-    if (resp.status != 200) {
-        return std::string("camera module returned HTTP ") + std::to_string(resp.status);
-    }
-    ESP_LOGI(TAG, "Camera module %s -> %s", path.c_str(), resp.body.c_str());
-    return resp.body;
-}
 
 
 void WalleMotion::RegisterMcpTools() {
@@ -155,7 +117,8 @@ void WalleMotion::RegisterMcpTools() {
 
     // -- Eye expressions ---------------------------------------------
     mcp.AddTool("self.walle.eyes",
-        "控制 Wall-E 的眼部表情。expression: neutral=中性、sad=难过/委屈、left=向左倾（疑惑）、right=向右倾（疑惑）",
+        "控制 Wall-E 的眼部表情（机械眼舵机和摄像头模块上的眼睛屏会同步更新）。"
+        "expression: neutral=中性、sad=难过/委屈、left=向左倾（疑惑）、right=向右倾（疑惑）",
         PropertyList({
             Property("expression", kPropertyTypeString, "neutral")
         }),
@@ -166,6 +129,9 @@ void WalleMotion::RegisterMcpTools() {
             else if (expr == "left") EvaluateCommand('j', 0);
             else if (expr == "right") EvaluateCommand('l', 0);
             else return std::string("unknown expression, use neutral/sad/left/right");
+            // Mirror the expression to the cam module's eye screens
+            // (CAM_PROTOCOL §11; best effort, the mechanical eyes lead).
+            WalleCamLink::GetInstance().SetEyes(expr);
             return true;
         });
 
@@ -205,44 +171,60 @@ void WalleMotion::RegisterMcpTools() {
     // -- Camera module (photo / video recording on its SD card) -------
     mcp.AddTool("self.walle.camera",
         "控制 Wall-E 的摄像头模块（照片和录像保存在摄像头模块的 SD 卡上，预览和回放显示在 Wall-E 的眼睛屏幕上）。"
-        "action: photo=拍一张照片（拍完自动在眼睛屏预览）、record_start=开始录像、record_stop=停止录像、"
-        "preview=在眼睛屏预览最新照片、replay=在眼睛屏回放最新录像、stop=停止预览/回放恢复眼睛",
+        "action: photo=拍一张照片（拍摄前摄像头会在眼睛屏做 3、2、1 倒计时，调用后你应立即同步对用户口播"
+        "\"3、2、1，茄子\"；拍完照片自动在眼睛屏回放几秒）、record_start=开始录像、record_stop=停止录像、"
+        "preview=在眼睛屏回放最新照片、replay=回放最新录像（眼睛屏暂不支持录像回放，工具会返回替代指引）、"
+        "stop=停止眼睛屏上的回放并恢复表情",
         PropertyList({
             Property("action", kPropertyTypeString, "photo")
         }),
         [this](const PropertyList& properties) -> ReturnValue {
             std::string action = properties["action"].value<std::string>();
-            auto& viewer = WalleCamViewer::GetInstance();
+            auto& cam = WalleCamLink::GetInstance();
             if (action == "photo") {
-                std::string resp = CallCamModule("/capture");
-                // Auto-preview the new photo on the eye display (best effort)
-                auto pos = resp.find("\"file\":\"");
-                if (pos != std::string::npos) {
-                    pos += 8;
-                    auto end = resp.find('"', pos);
-                    if (end != std::string::npos) {
-                        std::string name = resp.substr(pos, end - pos);
-                        std::string path = (name.find('/') != std::string::npos)
-                            ? name : (std::string("/photos/") + name);
-                        viewer.ShowPhoto(path);
-                    }
+                std::string path;
+                if (!cam.TakePhoto(path)) {
+                    std::string err = cam.last_error();
+                    return std::string("拍照失败") + (err.empty() ? "：摄像头模块无响应" : ("：" + err));
                 }
-                return resp;
+                // CAM_PROTOCOL §4: prompt the LLM to voice the countdown
+                return std::string("已拍照，照片保存在摄像头模块 ") + path +
+                    "（眼睛屏正在回放）。请对用户口播：3、2、1，茄子！";
             }
-            if (action == "record_start") return CallCamModule("/record?action=start");
-            if (action == "record_stop") return CallCamModule("/record?action=stop");
+            if (action == "record_start") {
+                std::string path;
+                if (!cam.RecordStart(path)) {
+                    std::string err = cam.last_error();
+                    return std::string("开始录像失败") + (err.empty() ? "：摄像头模块无响应" : ("：" + err));
+                }
+                return std::string("开始录像，文件 ") + path;
+            }
+            if (action == "record_stop") {
+                std::string path;
+                int frames = 0;
+                if (!cam.RecordStop(path, frames)) {
+                    std::string err = cam.last_error();
+                    return std::string("停止录像失败") + (err.empty() ? "：摄像头模块无响应" : ("：" + err));
+                }
+                return std::string("录像已保存 ") + path + "（" + std::to_string(frames) + " 帧）";
+            }
             if (action == "preview") {
-                std::string err = viewer.ShowLatestPhoto();
-                if (!err.empty()) return err;
-                return std::string("previewing latest photo on the eye display");
+                std::string path;
+                if (!cam.ShowLatest(path)) {
+                    return std::string("眼睛屏预览不可用（需要摄像头 UART 链路在线）");
+                }
+                return std::string("正在眼睛屏回放最新照片 ") + path;
             }
             if (action == "replay") {
-                std::string err = viewer.PlayLatestVideo();
-                if (!err.empty()) return err;
-                return std::string("replaying latest video on the eye display");
+                // CAM_PROTOCOL §11: eye-display video replay is v2; guide
+                // the user to the cam module's browser page instead.
+                return std::string("眼睛屏暂不支持录像回放。请在浏览器打开摄像头模块页面 ") +
+                    CAM_MODULE_URL + " 下载录像文件播放。";
             }
             if (action == "stop") {
-                viewer.StopPlayback();
+                if (!cam.Abort()) {
+                    return std::string("停止回放失败（需要摄像头 UART 链路在线）");
+                }
                 return true;
             }
             return std::string("unknown action, use photo/record_start/record_stop/preview/replay/stop");

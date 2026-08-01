@@ -125,14 +125,15 @@
 #define WALLE_SERIAL_ENABLED    0
 
 // ---- ESP32-S3-CAM module (wall-e_esp32_cam) ----
-// UART link per the third-party pin table (main 9/10 <-> CAM 21/14):
-// RESERVED, not implemented - no code references these macros yet.
-// Control + file transfer currently run over Wi-Fi HTTP (CAM_MODULE_URL);
-// Wi-Fi MJPEG preview (/stream) also stays on Wi-Fi. CAM-side GPIO21/14
-// availability is pending board verification (docs/NEW_HARDWARE_MIGRATION.md
-// Step 4.5).
-#define CAM_UART_TX_PIN  GPIO_NUM_9    // -> CAM GPIO14 (RX), reserved
-#define CAM_UART_RX_PIN  GPIO_NUM_10   // <- CAM GPIO21 (TX), reserved
+// UART control link per CAM_PROTOCOL v1 (docs/CAM_PROTOCOL.md), wired per
+// the third-party pin table (main 9/10 <-> CAM 21/14); implemented by
+// walle_cam_link (UART first, HTTP fallback to CAM_MODULE_URL).
+// Wi-Fi MJPEG preview (/stream) and browser file access stay on Wi-Fi.
+// CAM-side GPIO21/14 availability is pending board verification
+// (docs/NEW_HARDWARE_MIGRATION.md Step 4.5).
+#define CAM_UART_ENABLED 1
+#define CAM_UART_TX_PIN  GPIO_NUM_9    // -> CAM GPIO14 (RX)
+#define CAM_UART_RX_PIN  GPIO_NUM_10   // <- CAM GPIO21 (TX)
 #define CAM_UART_BAUD    115200
 // CAM Wi-Fi base URL for the MJPEG preview; find its IP in the module's
 // serial output, e.g. "http://192.168.4.3".

@@ -41,15 +41,21 @@
 
 ## 待执行
 
-### Step 4：CAM UART 串口链路（替代 HTTP 控制通道）
+### Step 4：CAM UART 串口链路（✅ 固件已实现 2026-08-01，未编译/未实机联调）
 
-> 前置依赖：Step 4.5 的板型核对（确认 CAM 侧 21/14 空闲可用、摄像头/SD 引脚正确）完成后再实施。
+> 前置依赖：Step 4.5 的板型核对（确认 CAM 侧 21/14 空闲可用、摄像头/SD 引脚正确）完成后实机验证。注意：CAM 侧 `CAM_LINK_RX_PIN=14` 与 `camera_pins.h` XIAO 预设的 Y6 撞脚，板型核对后可能要改。
 
-- 主控新增 `walle_cam_link.cc/.h`：UART1（TX=9/RX=10，115200），行式文本协议：
-  `CAPTURE` / `REC_START` / `REC_STOP` / `LIST` / `READ <path> <offset> <len>`（对应现有 HTTP 端点 `/capture`、`/record`、`/files`、`/file` Range）；另补**眼睛表情/显示指令**（眼屏在 CAM 模组上，表情由主控经 UART 下发，协议格式自定）。
-- `wall-e_esp32_cam/wall-e_esp32_cam.ino`：新增 UART 命令模式（CAM 侧 TX=GPIO21/RX=GPIO14，按第三方文档；以板型核对结果为准），复用现有拍照/AVI 录像/SD 文件逻辑；Wi-Fi `/stream` 推流保留（Web 面板预览仍走 Wi-Fi）。
-- 主控侧切换调用方：`walle_mcp_tools.cc`（`self.walle.camera`）、`walle_cam_viewer.cc`（预览/回放拉文件）、`walle_web_server.cc`（`/camview` 与摄像头区按钮）由 HTTP 改为 UART 链路，接口语义不变。
-- 验证：`idf.py build`；有硬件后串口拍照/录像/文件传输实测。
+**协议规范见 `docs/CAM_PROTOCOL.md`（2026-07-31 定稿）**，要点：
+
+- v1 为纯控制通道（命令/状态/表情），**不传文件**；拍照为完整流程：准备 → 眼屏倒计时 3-2-1 → 拍摄 → CAM 眼屏本地回放 → 恢复表情（"茄子"口播由主控 TTS）；**含录像控制**（`REC START/STOP` + `EVT REC_DONE`，2026-07-31 修订）。
+- 命令集：`HELLO/PING/STATUS/EYES/PHOTO/REC/SHOW/ABORT/LIST`；行式文本，一命令一响应；HTTP 端点全部保留作回退。
+
+实施步骤（详见协议文档「后续任务」）——**均已完成（2026-08-01），待实机验证**：
+
+- ✅ 主控新增 `walle_cam_link.cc/.h`：UART1（TX=9/RX=10，115200）收发 + 互斥 Command() + HTTP 回退；`config.h` 新增 `CAM_UART_ENABLED`。
+- ✅ `wall-e_esp32_cam/`：新增 `cam_link.h`（Serial1 TX=21/RX=14，以板型核对为准）+ 拍照状态机（倒计时屏显、拍摄、JPEGDEC 本地解码回放）+ `eye_display.h` overlay 绘制入口（大号数字/RGB 位图）；新依赖 **JPEGDEC（bitbank2）**。
+- ✅ 主控侧切换调用方：`walle_mcp_tools.cc`（`self.walle.camera` → PHOTO/SHOW/ABORT/REC；`self.walle.eyes` 追加 EYES 下发）、`walle_web_server.cc`（`/camview` preview/stop）；`walle_cam_viewer` 标注废弃仅备查。
+- 验证（未做）：CAM 固件 Arduino IDE 编译（装 JPEGDEC）、`idf.py build`；实机按 `docs/CAM_PROTOCOL.md` §13 测试。
 
 ### Step 4.5：CAM 板型核对（阻塞项 — 实机操作）
 

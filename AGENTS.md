@@ -32,7 +32,10 @@ walle-replica/
 │   │   ├── walle_mcp_tools.cc   # MCP 工具注册（云端 LLM function calling → 动作/照明灯/摄像头）
 │   │   ├── walle_serial.cc      # USB 串口协议任务（默认禁用：GPIO19/20 原生 USB 被 PWMA/舵机 I2C 占用，日志走 UART0）
 │   │   ├── walle_web_server.cc  # Web 控制面板（esp_http_server :80，API 兼容 Flask 版，含摄像头画面区与预览/回放按钮）
-│   │   ├── walle_cam_viewer.cc/.h # 眼睛屏照片预览/AVI 回放（HTTP Range 拉取 cam SD 卡文件，esp_new_jpeg 解码 → SetPreviewImage；眼屏禁用，当前无显示出口）
+│   │   ├── walle_cam_link.cc/.h # 主控↔CAM UART 链路层（CAM_PROTOCOL v1，docs/CAM_PROTOCOL.md）：UART1 命令/事件 +
+│   │   │                        #   互斥 Command() + 超时判 down + HTTP 回退；MCP/Web 摄像头调用点统一走这里
+│   │   ├── walle_cam_viewer.cc/.h # **已废弃**（HTTP 拉帧预览/AVI 回放；眼屏在 CAM 模组上，主控 NoDisplay 无出口；
+│   │   │                        #   预览/回放已由 CAM 本地回放 + CamLink SHOW/ABORT 接管，仅保留代码备查）
 │   │   ├── walle_status_display.cc # ST7789 状态屏（第二个 LVGL 屏：电量/网络/状态，1s 刷新）
 │   │   ├── pca9685.cc/.h        # LU9685/PCA9685 I2C 舵机驱动（自写，小智原生无此驱动）
 │   │   └── config.json          # 批量构建配置
@@ -55,12 +58,15 @@ walle-replica/
 │                                #     XIAO Sense 写，实际模块为通用 ESP32-S3-CAM（OV3660），待实机核对，见 docs/NEW_HARDWARE_MIGRATION.md Step 4.5）
 │                                #   + 眼睛屏驱动 eye_display.h（2× 圆屏共享 SPI：SCK=42/MOSI=45/DC=41/RST=46，CS 左=2/右=0，
 │                                #     /eyes 端点；接线已确认，GC9A01 驱动假设待实机验证）
+│                                #   + cam_link.h（CAM_PROTOCOL v1 CAM 侧：Serial1 RX=14/TX=21 命令解析 + 拍照倒计时/眼屏
+│                                #     JPEG 回放状态机，依赖 JPEGDEC 库；引脚待 Step 4.5 核对）
 ├── docs/                        # 中文技术文档
 │   ├── SERIAL_PROTOCOL.md       # 串口通信协议（必读）
 │   ├── WIRING.md                # Arduino 接线指南
 │   ├── HARDWARE.md              # 硬件采购清单
 │   ├── VOICE_LLM_PLAN.md        # 语音 + LLM 方案（树莓派侧备选，尚未实现）
 │   ├── REID_FOLLOW_PLAN.md      # Re-ID 视觉跟随方案（尚未实现）
+│   ├── CAM_PROTOCOL.md          # 主控↔CAM UART 交互协议（规范已定稿；主控侧 walle_cam_link 与 CAM 侧 cam_link.h 均已实现，待实机联调）
 │   └── XIAOZHI_MIGRATION.md     # 小智语音迁移：构建、引脚、MCP 工具、Web 面板
 ├── hardware/                    # PCB 设计文件与第三方方案资料
 │   └── 另一套硬件方案.md         # 第三方 ESP32-S3 方案 BOM（由同名 xlsx 转录）
@@ -116,9 +122,9 @@ walle-replica/
 6. 显示屏（默认启用，`web_config.h` 的 `DISPLAYS_ENABLED`）：两块 GC9A01 圆屏做眼睛（矢量绘制，表情跟随 `i/j/k/l` 指令，2.5–6s 随机眨眼），一块 ST7789 做状态屏（电量/Wi-Fi/手柄/自动模式，1s 刷新）。三屏共用 SPI（SCK=21、MOSI=18，RST=47、BL=48 共接），各自 CS/DC 见 `web_config.h`。若 ST7789 画面偏移，调 `status_display.cpp` 构造函数的 offset 参数；眨眼动画期间 loop 有 ~40ms 阻塞，舵机控制由 dt 补偿，属正常。
 6. 蓝牙手柄：默认启用（`web_config.h` 的 `BT_GAMEPAD_ENABLED`），手柄进入配对模式即可连接；映射与 `gamepad.py` 一致（左摇杆行走、右摇杆头/颈、LT/RT 降臂、LB/RB 升臂、ABXY 眼部表情、Back 切自动模式、十字键随机音效/动画）。
 7. 摄像头（第二块 ESP32-S3-CAM）：编辑 `wall-e_esp32_cam/camera_pins.h` 选板型、在 sketch 顶部填 Wi-Fi 凭据（留空则连主控 `WallE` AP），安装 `Arduino_GFX` 库（眼屏驱动依赖），烧录后从串口拿到 IP，填入 `archive/wall-e_esp32/wall-e_esp32/data/index.html` 顶部的 `stream_url`（如 `http://192.168.4.3/stream`），重新上传 LittleFS 数据。小智主线面板则在 `walle_web_server.cc` 内嵌 HTML 的 `stream_url` 填同一地址。
-   - **microSD 拍照/录像**（SD 引脚当前按 XIAO Sense 预设：CS=2、SCK=7、MISO=8、MOSI=9；实际模块为通用 ESP32-S3-CAM，引脚待实机核对）：固件端点 `/capture`（拍照存 `/photos/`）、`/record?action=start|stop`（MJPEG→AVI 存 `/videos/`，帧率 `REC_FPS`）、`/files`（列表）、`/file?path=`（GET 下载 / DELETE 删除，GET 支持 HTTP Range 供主控分段取帧）。小智 Web 面板摄像头区按钮直连这些端点；语音工具 `self.walle.camera` 通过 `config.h` 的 `CAM_MODULE_URL` 调用。SD 挂载失败不影响推流。注意 `SD_CS_PIN=2` 与左眼 CS 撞脚（眼屏接线已确认，SD 引脚待核对）。
-   - **眼睛屏驱动**（`eye_display.h`，接线已确认 2026-07-31）：两块 1.28" 圆屏共享 SPI（SCK=42、MOSI=45、DC=41、RST=46，HSPI 主机），片选左=2/右=0，GC9A01 假设（待实机验证）；矢量眼睛 + 随机眨眼（复用 archive 绘制逻辑）；HTTP 端点 `/eyes?expr=neutral|sad|left|right`（词汇同主控 `self.walle.eyes`），UART 表情指令待 Step 4 接入。
-   - **眼睛屏预览/回放**（`walle_cam_viewer.cc`）：**注意主控侧眼屏已禁用**（第三方套件眼屏接在 CAM 模组上），预览/回放当前无显示出口（NoDisplay），以下为代码保留能力：`self.walle.camera` 的 `photo` 拍完自动预览，另有 `preview`（最新照片）/`replay`（最新 AVI 按帧回放）/`stop`；Web 面板 Preview/Replay/Stop view 按钮走主控 `POST /camview`；回放期间单击 BOOT 停止。照片显示 5s 后自动恢复眼睛（`SetPreviewImage` 预览定时器），回放结束/停止即恢复。
+   - **microSD 拍照/录像**（SD 引脚当前按 XIAO Sense 预设：CS=2、SCK=7、MISO=8、MOSI=9；实际模块为通用 ESP32-S3-CAM，引脚待实机核对）：固件端点 `/capture`（拍照存 `/photos/`）、`/record?action=start|stop`（MJPEG→AVI 存 `/videos/`，帧率 `REC_FPS`）、`/files`（列表）、`/file?path=`（GET 下载 / DELETE 删除，GET 支持 HTTP Range 供主控分段取帧）。小智 Web 面板摄像头区按钮直连这些端点；语音工具 `self.walle.camera` 改经 `WalleCamLink`（UART 优先，链路 down 时回退 `config.h` 的 `CAM_MODULE_URL` HTTP 端点）。SD 挂载失败不影响推流。注意 `SD_CS_PIN=2` 与左眼 CS 撞脚（眼屏接线已确认，SD 引脚待核对）。
+   - **眼睛屏驱动**（`eye_display.h`，接线已确认 2026-07-31）：两块 1.28" 圆屏共享 SPI（SCK=42、MOSI=45、DC=41、RST=46，HSPI 主机），片选左=2/右=0，GC9A01 假设（待实机验证）；矢量眼睛 + 随机眨眼（复用 archive 绘制逻辑）；HTTP 端点 `/eyes?expr=neutral|sad|left|right`（词汇同主控 `self.walle.eyes`），UART `EYES` 命令已由 cam_link.h 接入；另有 overlay 绘制入口（大号倒计时数字 `eyeDisplayShowNumber`、JPEG 解码块 `eyeDisplayDrawRgbBitmap`、`eyeDisplayResume` 恢复表情）供拍照流程使用。
+   - **眼睛屏预览/回放**（CAM 本地回放，`walle_cam_link.cc`）：**主控侧眼屏已禁用**（第三方套件眼屏接在 CAM 模组上），预览/回放改由 CAM 在自己的眼屏上本地解码显示，主控经 UART 链路（CAM_PROTOCOL v1，`WalleCamLink`）下发：`self.walle.camera` 的 `photo`（`PHOTO`，CAM 侧 3-2-1 倒计时后拍摄并回放，工具返回值引导 LLM 口播"3、2、1，茄子"）、`preview`（`SHOW LATEST`）、`stop`（`ABORT`）、`record_start/stop`（`REC START/STOP`）；`replay` 眼屏暂不支持（留 v2），工具返回浏览器下载指引。Web 面板 Preview/Stop view 按钮走主控 `POST /camview` → `SHOW LATEST`/`ABORT`。链路 down（连续 3 次超时）时拍照/录像/表情回退 HTTP（`CAM_MODULE_URL`），SHOW/ABORT 无 HTTP 等价直接失败。`self.walle.eyes` 保留机械眼舵机表情并追加 `EYES <expr>` 下发 CAM。旧 `walle_cam_viewer.cc`（HTTP 拉帧解码）已废弃仅备查。
 8. 前端 `data/index.html`/`login.html` 由 `archive/arduino-pi/web_interface/templates/` 去 Jinja 化生成（静态路径、`CODEBLOCK_*` 与音效列表为构建期烘焙值）；Pi 端模板改动后需重新生成（会覆盖 `stream_url` 行）。
 
 ### 4.2 树莓派 Web 服务
@@ -310,5 +316,6 @@ setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 - `docs/WIRING.md`：Arduino 与舵机板/电机板接线
 - `docs/HARDWARE.md`：硬件采购清单
 - `docs/XIAOZHI_MIGRATION.md`：小智语音迁移（构建、引脚、MCP 工具、Web 面板、服务端切换）
+- `docs/CAM_PROTOCOL.md`：主控↔ESP32-S3-CAM UART 交互协议（命令/拍照流程/表情；规范已定稿，主控侧 `walle_cam_link` 与 CAM 侧 `cam_link.h` 均已实现，待实机联调）
 - `docs/VOICE_LLM_PLAN.md`：语音 + LLM 接入方案（树莓派侧备选）
 - `docs/REID_FOLLOW_PLAN.md`：Re-ID 目标跟随方案

@@ -1,19 +1,21 @@
 /**
- * WALL-E CAMERA VIEWER
+ * WALL-E CAMERA VIEWER  --  DEPRECATED / NO DISPLAY OUTPUT
  *
  * @file    walle_cam_viewer.h
- * @brief   Shows photos and replays AVI recordings from the ESP32-S3-CAM
- *          module's SD card on the GC9A01 eye display, via
- *          LcdDisplay::SetPreviewImage().
+ * @brief   DEPRECATED. The GC9A01 eye displays are wired to the
+ *          ESP32-S3-CAM module, not to this MCU (config.h:
+ *          EYE_DISPLAY_ENABLED=0, NoDisplay), so this HTTP-pull viewer has
+ *          no display output. Photo preview / replay moved to CAM-local
+ *          playback driven over the UART link (CAM_PROTOCOL v1, §11):
+ *          use WalleCamLink::ShowLatest() / Show() / Abort() instead.
+ *          MCP tools and the web panel (/camview) no longer call this
+ *          class; it is kept for reference only (its HTTP Range + JPEG
+ *          decode helpers may still be useful for a future v2 READ).
  *
- * The cam module (wall-e_esp32_cam firmware) serves JPEG photos and
- * MJPEG-in-AVI recordings over HTTP (/files, /file?path=..., with Range
- * support). This viewer downloads a frame over HTTP, decodes it with
- * esp_new_jpeg into an RGB565 LvglAllocatedImage and hands it to the
- * display. Playback runs on a one-shot worker task so callers (MCP
- * tools, web handlers) never block; a second start request while busy
- * is rejected, and StopPlayback() (BOOT button or "stop" action)
- * terminates video replay after the current frame.
+ * Original purpose: showed photos and replayed AVI recordings from the
+ * ESP32-S3-CAM module's SD card on the GC9A01 eye display, via
+ * LcdDisplay::SetPreviewImage() (HTTP /files + /file?path=... with Range
+ * support, esp_new_jpeg decode into an RGB565 LvglAllocatedImage).
  */
 
 #pragma once

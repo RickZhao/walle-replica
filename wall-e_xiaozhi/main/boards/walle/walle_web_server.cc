@@ -7,7 +7,7 @@
 
 #include "walle_web_server.h"
 #include "walle_motion.h"
-#include "walle_cam_viewer.h"
+#include "walle_cam_link.h"
 #include "config.h"
 
 #include <esp_log.h>
@@ -118,7 +118,8 @@ function camFiles(){
   }).catch(()=>camMsg('camera unreachable'));}
 function camDel(p){fetch(camapi+'/file?path='+p,{method:'DELETE'})
   .then(()=>camFiles()).catch(()=>camMsg('delete failed'));}
-// Preview / replay run on the main controller (eye display), not the cam module
+// Preview / stop view dispatch via the main controller to the cam module's
+// local eye-display playback (CAM UART link); video replay is unsupported (v2)
 function camView(a){camMsg(a+'...');
   fetch('/camview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action='+a})
   .then(r=>r.json()).then(j=>camMsg(j.status==='OK'?(a=='stop'?'stopped':a+' started - see eye display'):(j.msg||'error')))
@@ -310,18 +311,24 @@ static esp_err_t CamViewHandler(httpd_req_t* req) {
     if (!FormParam(body, "action", action, sizeof(action))) {
         return SendErr(req, "Unable to read POST data");
     }
-    auto& viewer = WalleCamViewer::GetInstance();
-    std::string err;
+    // CAM_PROTOCOL §11: preview/stop dispatch to the cam module's local
+    // eye-display playback over the UART link (no HTTP equivalent).
+    auto& cam = WalleCamLink::GetInstance();
     if (strcmp(action, "preview") == 0) {
-        err = viewer.ShowLatestPhoto();
+        std::string path;
+        if (!cam.ShowLatest(path)) {
+            return SendErr(req, "eye-display preview unavailable (CAM UART link down or no photos)");
+        }
     } else if (strcmp(action, "replay") == 0) {
-        err = viewer.PlayLatestVideo();
+        // Eye-display video replay is protocol v2; download via the cam page.
+        return SendErr(req, "eye-display video replay not supported - download from the camera module page");
     } else if (strcmp(action, "stop") == 0) {
-        viewer.StopPlayback();
+        if (!cam.Abort()) {
+            return SendErr(req, "abort failed (CAM UART link down)");
+        }
     } else {
         return SendErr(req, "unknown action, use preview/replay/stop");
     }
-    if (!err.empty()) return SendErr(req, err.c_str());
     return SendOk(req);
 }
 

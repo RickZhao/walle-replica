@@ -86,6 +86,11 @@ static int   eyeBlinkPhase = 0;            // 0=idle, 1=closing, 2=opening
 static unsigned long eyeNextBlinkAt = 3000;
 static unsigned long eyeNextBlinkFrameAt = 0;
 
+// Overlay mode (cam_link.h countdown digits / decoded photo preview):
+// while active the blink animation is suspended so it cannot clobber
+// the overlay pixels.
+static bool eyeOverlayActive = false;
+
 
 // -------------------------------------------------------------------
 /// Draw a single eye
@@ -136,6 +141,32 @@ static void redrawEyes() {
 	drawEye(eyeGfxR, eyeExpr, eyeLidClose);
 }
 
+
+// -------------------------------------------------------------------
+/// Large countdown digit (7-segment style, white on black, no font)
+// -------------------------------------------------------------------
+
+// Segment bitmap per digit, bit0=a(top) ... bit6=g(middle)
+static const uint8_t DIGIT_SEGMENTS[10] = {
+	0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F,
+};
+
+static void drawDigit(Arduino_GFX *gfx, int digit) {
+	// Centred 90x150 box with 16px thick segments
+	const int W = 90, H = 150, T = 16;
+	const int X0 = EYE_CX - W / 2, Y0 = EYE_CY - H / 2;
+	uint8_t seg = DIGIT_SEGMENTS[digit];
+
+	gfx->fillScreen(BLACK);
+	if (seg & 0x01) gfx->fillRect(X0,         Y0,                 W, T,     WHITE);  // a: top
+	if (seg & 0x02) gfx->fillRect(X0 + W - T, Y0,                 T, H / 2, WHITE);  // b: upper right
+	if (seg & 0x04) gfx->fillRect(X0 + W - T, Y0 + H / 2,         T, H / 2, WHITE);  // c: lower right
+	if (seg & 0x08) gfx->fillRect(X0,         Y0 + H - T,         W, T,     WHITE);  // d: bottom
+	if (seg & 0x10) gfx->fillRect(X0,         Y0 + H / 2,         T, H / 2, WHITE);  // e: lower left
+	if (seg & 0x20) gfx->fillRect(X0,         Y0,                 T, H / 2, WHITE);  // f: upper left
+	if (seg & 0x40) gfx->fillRect(X0,         Y0 + H / 2 - T / 2, W, T,     WHITE);  // g: middle
+}
+
 #endif /* EYE_DISPLAYS_ENABLED */
 
 
@@ -171,6 +202,10 @@ void eyeDisplayInit() {
 /// Blink animation and timing. Call on every iteration of loop().
 void eyeDisplayLoop() {
 #if EYE_DISPLAYS_ENABLED
+	// Overlay content (cam_link.h countdown / photo preview) owns the
+	// screens - suspend blinking so it cannot clobber the pixels.
+	if (eyeOverlayActive) return;
+
 	unsigned long now = millis();
 
 	// Start a new blink
@@ -234,6 +269,61 @@ const char *eyeDisplayExpressionName() {
 	}
 #else
 	return "disabled";
+#endif
+}
+
+
+// -------------------------------------------------------------------
+/// Overlay drawing interface (used by cam_link.h: photo countdown
+/// digits and decoded JPEG preview). Overlay functions suspend the
+/// blink animation; eyeDisplayResume() leaves overlay mode.
+// -------------------------------------------------------------------
+
+/// Current expression (cam_link.h saves it before the photo flow).
+EyeExpression eyeDisplayGetExpression() {
+#if EYE_DISPLAYS_ENABLED
+	return eyeExpr;
+#else
+	return EYE_NEUTRAL;
+#endif
+}
+
+/// Fill both displays with one colour (enters overlay mode).
+void eyeDisplayFillScreen(uint16_t color) {
+#if EYE_DISPLAYS_ENABLED
+	eyeOverlayActive = true;
+	eyeGfxL->fillScreen(color);
+	eyeGfxR->fillScreen(color);
+#endif
+}
+
+/// Draw an RGB565 block at the same position on BOTH displays
+/// (JPEGDEC decode callback entry from cam_link.h). Pixel values are
+/// host-order RGB565 (Arduino_GFX handles the wire byte order).
+void eyeDisplayDrawRgbBitmap(int x, int y, const uint16_t *pixels, int w, int h) {
+#if EYE_DISPLAYS_ENABLED
+	eyeOverlayActive = true;
+	eyeGfxL->draw16bitRGBBitmap(x, y, pixels, w, h);
+	eyeGfxR->draw16bitRGBBitmap(x, y, pixels, w, h);
+#endif
+}
+
+/// Show a large centred white digit (0-9) on both displays, black
+/// background - the photo countdown (enters overlay mode).
+void eyeDisplayShowNumber(int digit) {
+#if EYE_DISPLAYS_ENABLED
+	if (digit < 0 || digit > 9) return;
+	eyeOverlayActive = true;
+	drawDigit(eyeGfxL, digit);
+	drawDigit(eyeGfxR, digit);
+#endif
+}
+
+/// Leave overlay mode and redraw the current expression on both eyes.
+void eyeDisplayResume() {
+#if EYE_DISPLAYS_ENABLED
+	eyeOverlayActive = false;
+	redrawEyes();
 #endif
 }
 

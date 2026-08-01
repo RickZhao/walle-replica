@@ -30,7 +30,7 @@
 #include "walle_motion.h"
 #include "walle_status_display.h"
 #include "walle_web_server.h"
-#include "walle_cam_viewer.h"
+#include "walle_cam_link.h"
 
 #include <esp_log.h>
 #include <esp_system.h>
@@ -99,13 +99,6 @@ private:
 
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
-            // While a camera preview/replay is on the eye display, BOOT
-            // stops it instead of toggling the chat state.
-            auto& viewer = WalleCamViewer::GetInstance();
-            if (viewer.IsBusy()) {
-                viewer.StopPlayback();
-                return;
-            }
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 if (GetNetworkType() == NetworkType::WIFI) {
@@ -184,6 +177,13 @@ public:
             WalleMotion::GetInstance().RegisterMcpTools();
         }
         WalleSerialStart();
+
+#if CAM_UART_ENABLED
+        // CAM module control link (UART1 + HTTP fallback). Non-blocking:
+        // without a CAM module attached the link stays offline and all
+        // camera actions fall back to HTTP.
+        WalleCamLink::GetInstance().Start();
+#endif
 
 #if STATUS_DISPLAY_ENABLED
         // Secondary ST7789 status screen on its own SPI bus. When the eye

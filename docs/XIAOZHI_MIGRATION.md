@@ -65,7 +65,7 @@ idf.py -p COMx flash monitor
 | 按键 BOOT/音量+/音量-/重启 | 0 / 38 / 39 / 41 | 重启为长按触发 |
 | ST7789 SCLK/MOSI/DC/RST/BL | 14 / 47 / 40 / 45 / 42 | 独立 SPI 总线；7 针模块无 CS（内部拉低） |
 | 电池分压 | 1 (ADC1_CH0) | 第三方文档无此项，分压接线待硬件确认 |
-| CAM UART TX/RX | 9 / 10 | 预留（固件未实现，现状走 Wi-Fi HTTP，见 §7） |
+| CAM UART TX/RX | 9 / 10 | 已实现（`WalleCamLink`，UART 优先 + HTTP 回退；协议见 `docs/CAM_PROTOCOL.md`） |
 | ML307A TX/RX（可选） | 2 / 3 | 4G 模组 UART（ESP32 视角），DTR 不接 |
 | 眼睛屏 | 无主控引脚 | 第三方套件的眼屏接在 CAM 模组上，主控侧 `EYE_DISPLAY_ENABLED=0` 禁用（见 §7.1） |
 
@@ -99,7 +99,7 @@ esp_http_server 跑在 **80 端口**，路由契约与树莓派 Flask 版（`arc
 | `/servoControl` | POST | servo(G/T/B/E/U/L/R/I/J/V), value(0..100) | → 对应舵机指令；`V`=照明灯亮度 |
 | `/arduinoStatus` | POST | type=battery | 返回电量 JSON |
 | `/gamepadStatus` | GET/POST | — | 恒报未连接（IDF 版暂无蓝牙手柄） |
-| `/camview` | POST | action=preview/replay/stop | 眼睛屏照片预览/录像回放（`walle_cam_viewer.cc`） |
+| `/camview` | POST | action=preview/replay/stop | 眼睛屏预览/停止（经 `WalleCamLink` 下发 `SHOW LATEST`/`ABORT`；replay 返回"眼屏暂不支持录像回放"提示） |
 
 **注意**：无登录鉴权，仅限可信局域网使用。`/tts`、`/audio`（本地 wav）未移植（云端 TTS 替代）。
 
@@ -107,7 +107,7 @@ esp_http_server 跑在 **80 端口**，路由契约与树莓派 Flask 版（`arc
 
 摄像头是**独立的网络外设**：第二块 ESP32-S3-CAM 跑主目录下的 Arduino 推流固件（`wall-e_esp32_cam/`），画面走 Wi-Fi，浏览器直接拉它的流，不经过小智主控。
 
-**链路现状与规划**：当前主控 ↔ CAM 只有电源线，控制与文件传输全走 Wi-Fi HTTP（`CAM_MODULE_URL`）。第三方引脚表规划了 UART 链路（主控 TX=9/RX=10 ↔ CAM 21(TX)/14(RX)），主控侧宏已落地（`CAM_UART_*`）但**固件未实现**（计划见 `docs/NEW_HARDWARE_MIGRATION.md` Step 4）。
+**链路现状与规划**：UART 链路（主控 TX=9/RX=10 ↔ CAM 21(TX)/14(RX)）固件**已实现（2026-08-01，未实机联调）**：主控侧 `walle_cam_link.cc/.h`（`WalleCamLink`，UART 优先、链路 down 回退 `CAM_MODULE_URL` HTTP），CAM 侧 `cam_link.h`；协议规范 v1（纯控制通道，拍照倒计时流程 + 眼屏表情 + 录像控制，不传文件）见 **`docs/CAM_PROTOCOL.md`**。浏览器浏览/下载文件仍直连 CAM HTTP，不经主控。
 
 **板型注意**：实际 CAM 模块为通用 "ESP32-S3-CAM"（OV3660），而 `camera_pins.h` 当前选的是 XIAO ESP32-S3 Sense 预设（SD 引脚 CS=2/SCK=7/MISO=8/MOSI=9 也是 XIAO 专用）——未经硬件验证，摄像头/SD 引脚很可能不匹配，需按实际模块资料核对修正（见 `docs/NEW_HARDWARE_MIGRATION.md` 待办）。
 
@@ -126,7 +126,7 @@ esp_http_server 跑在 **80 端口**，路由契约与树莓派 Flask 版（`arc
 
 CAM 固件带 SD 卡（引脚按 XIAO Sense 预设：CS=2/SCK=7/MISO=8/MOSI=9，实际模块待核对，FAT32）：`/capture` 拍照存 `/photos/`、`/record?action=start|stop` 录 MJPEG→AVI 存 `/videos/`、`/files` 列表、`/file?path=` 下载/删除（GET 支持 HTTP Range）。
 
-主控侧 `walle_cam_viewer.cc` 负责把 SD 卡内容搬上眼睛屏。**注意**：第三方套件的眼睛屏接在 CAM 模组上（不在主控），主控侧 `EYE_DISPLAY_ENABLED=0`，预览/回放当前**无本地显示出口**（`NoDisplay`）；以下描述为代码保留能力，待 CAM 侧显示方案明确后再激活：
+主控侧 `walle_cam_viewer.cc` 曾负责把 SD 卡内容搬上眼睛屏。**已废弃（2026-08-01，仅保留代码备查）**：第三方套件的眼睛屏接在 CAM 模组上（不在主控），主控侧 `EYE_DISPLAY_ENABLED=0` 无显示出口（`NoDisplay`）；预览/回放已由 CAM 侧本地回放接管（`cam_link.h` 的 SHOW/PHOTO 流程，主控经 `WalleCamLink` 下发）。以下描述仅为代码保留能力存档：
 
 - **照片预览**：HTTP 拉取 JPEG → esp_new_jpeg 解码（宽高超 480px 自动 1/2^n 缩放）→ `LcdDisplay::SetPreviewImage()` 全屏显示，5s 后预览定时器自动恢复眼睛动画；语音"拍张照"成功后自动预览刚拍的照片。
 - **AVI 回放**：按 `/files` 找最新录像，Range 请求探测 RIFF 头（帧率取自 `avih.dwMicroSecPerFrame`）与尾部 `idx1` 索引，再逐帧 Range 拉取 → 解码 → 逐帧 `SetPreviewImage`（每帧重置预览定时器），按帧率节拍播放；结束/停止后恢复眼睛。连续 10 帧失败自动中止。
