@@ -8,8 +8,8 @@
  *          (no bitmap assets): lens + iris + pupil + highlight + eyelid,
  *          with expressions and periodic blinking.
  *
- *          Rendering logic is reused from the archived ESP32 firmware
- *          (archive/wall-e_esp32/wall-e_esp32/eye_display.cpp).
+ *          Rendering logic is reused from the ESP32 standalone firmware (since removed)
+ *          (removed 2026-08; was at archive/wall-e_esp32/wall-e_esp32/eye_display.cpp).
  *
  * Wiring (CONFIRMED 2026-07-31, per user measurement):
  *   shared SPI bus: SCK=GPIO42, SDA(MOSI)=GPIO45, DC=GPIO41, RST=GPIO46

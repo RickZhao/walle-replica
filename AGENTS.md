@@ -9,13 +9,14 @@
 1. **Arduino 固件**（`archive/arduino-pi/wall-e/`）：直接驱动电机、舵机，通过 USB 串口接收指令。
 2. **Raspberry Pi Web 服务器**（`archive/arduino-pi/web_interface/`）：基于 Flask 的 Web 控制界面，通过串口向 Arduino 下发指令；可选接入 CSI 摄像头做 MJPEG 视频推流；支持浏览器虚拟摇杆、游戏手柄、TTS、Blockly 拖拽编程。
 
-**当前存在三套固件格局**（2026-07 起）：
+**当前存在两套主控固件格局**（2026-08 起）：
 
 | 固件 | 框架 | 定位 | 状态 |
 |------|------|------|------|
 | `archive/arduino-pi/wall-e/` | Arduino (UNO) | 原始方案：UNO + 树莓派 | 维护中 |
-| `archive/wall-e_esp32/wall-e_esp32/` | Arduino (ESP32-S3) | ESP32 单机版：内置 Web 控制端/音频/手柄/显示屏，可脱离树莓派 | **冻结**（保留作 Pi 方案回退） |
 | `wall-e_xiaozhi/main/boards/walle/` | ESP-IDF | **主线**：小智语音交互单 MCU 方案（唤醒词 + 云端 LLM + MCP 动作 + 4G 回退；眼睛屏在 CAM 模组上，主控侧禁用） | **开发中** |
+
+> 原 ESP32-S3 单机版（`archive/wall-e_esp32/`）已于 2026-08 移除；其舵机标定 sketch 保留并移至仓库主目录 `wall-e_esp32_calibration/`（小智主线标定用）。
 
 硬件接线、舵机标定、电池检测等说明见 `README.md` / `README.zh-CN.md`，详细接线与串口协议见 `docs/`，小智迁移细节见 `docs/XIAOZHI_MIGRATION.md`。
 
@@ -49,10 +50,7 @@ walle-replica/
 │   │   │                        #   config.py（全大写键）、gamepad.py、picamera2_stream.py（:8080 MJPEG）、
 │   │   │                        #   walle.service、templates/ + static/（摇杆、Blockly、音效）
 │   │   └── raspi-setup.sh       # 树莓派一键安装/自启脚本
-│   └── wall-e_esp32/            # ESP32-S3 单机版（已冻结，作树莓派方案回退）
-│       ├── wall-e_esp32/        # 主控固件（串口协议与 UNO 版一致）：内置 Web 控制端、PCM5102 I2S 音频、
-│       │                        #   蓝牙手柄（Bluepad32）、GC9A01×2 眼睛 + ST7789 状态屏；data/ 为 LittleFS 镜像
-│       └── wall-e_esp32_calibration/ # ESP32 版标定 sketch（小智固件标定也用这份）
+├── wall-e_esp32_calibration/    # ESP32-S3 版舵机标定 sketch（小智主线标定用；原 archive/wall-e_esp32/ 冻结固件已移除）
 ├── wall-e_esp32_cam/            # 第二块 ESP32-S3-CAM 固件（主线配套摄像头外设）：MJPEG 推流（/stream）
 │                                #   + microSD 拍照录像（/capture、/record、/files、/file；板型预设与 SD 引脚当前按
 │                                #     XIAO Sense 写，实际模块为通用 ESP32-S3-CAM（OV3660），待实机核对，见 docs/NEW_HARDWARE_MIGRATION.md Step 4.5）
@@ -83,7 +81,7 @@ walle-replica/
 - **开发环境**：Arduino IDE（推荐）
 - **必需库**：`Adafruit_PWMServoDriver`（PCA9685 / LU9685 16 路 PWM 舵机板）
 - **可选库**：`U8g2`（SH1106 OLED 电量显示）
-- **控制器**：Arduino UNO R3（`archive/arduino-pi/wall-e/`，按 UNO 引脚映射编写）或 ESP32-S3（`archive/wall-e_esp32/wall-e_esp32/`，需 Arduino-ESP32 core 3.x，Tools → USB CDC On Boot → Enabled）
+- **控制器**：Arduino UNO R3（`archive/arduino-pi/wall-e/`，按 UNO 引脚映射编写）。（原 ESP32-S3 单机版已移除；ESP32-S3 主线走小智 ESP-IDF 固件，见 `wall-e_xiaozhi/`。）
 
 ### 3.2 树莓派 Web 端
 - **语言**：Python 3
@@ -105,27 +103,13 @@ walle-replica/
 4. 选择正确的 Board / Port，上传。
 5. 串口监视器波特率设为 **115200**。
 
-#### ESP32-S3 版本（`archive/wall-e_esp32/wall-e_esp32/`）
-1. 安装 esp32 开发板包（Arduino-ESP32 core **3.x**）和库：`Adafruit_PWMServoDriver`、`ESPAsyncWebServer` + `AsyncTCP`（ESP32Async 组织维护，兼容 core 3.x）、`ESP32-audioI2S`（schreibfaul1，音频播放）、`Bluepad32`（蓝牙手柄）、`Arduino_GFX`（moononournation，GC9A01/ST7789 显示屏）。
-2. 打开 `archive/wall-e_esp32/wall-e_esp32/wall-e_esp32.ino`；选择 ESP32-S3 开发板，设置 **Tools → USB CDC On Boot → Enabled**，**Tools → Partition Scheme → Custom**（使用 sketch 目录下的 `partitions.csv`）。
-3. 引脚映射在文件顶部 `#define`（默认：TB6612 用 GPIO 4/5/6/7/15/16，STBY=17，I2C SDA=8/SCL=9，OE=10，电池 ADC=GPIO1）。
-4. 用 `archive/wall-e_esp32/wall-e_esp32_calibration/` 标定后把 `preset` 贴回主 sketch；沿用同一块 60Hz 舵机板和机械结构时，UNO 版的 `preset` 值可直接复用。
-5. 上传后串口协议与 UNO 版**完全一致**，`archive/arduino-pi/web_interface/` 无需任何改动，只需把 `local_config.py` 的串口指向 ESP32-S3 的端口。
+#### ESP32-S3 单机版（已移除）
 
-#### ESP32-S3 内置 Web 控制端（可脱离树莓派）
-`archive/wall-e_esp32/wall-e_esp32/` 自带与 Flask 版路由兼容的 HTTP 服务器（`web_server.cpp`），Wi-Fi 遥控不再依赖树莓派：
-1. 编辑 `archive/wall-e_esp32/wall-e_esp32/web_config.h`：填 `WIFI_SSID`/`WIFI_PASSWORD` 走 STA 模式；留空则启动 AP 热点（默认 `WallE` / `walle1234`）。**不要把真实密码提交到 git**。
-2. 上传固件后，用 Arduino IDE 的 **LittleFS Data Upload** 插件把 `archive/wall-e_esp32/wall-e_esp32/data/` 上传到 LittleFS 分区（首次或前端变更时执行）。
-3. 浏览器访问 `http://<esp-ip>`（AP 模式为 `http://192.168.4.1`），登录密码同 `web_config.h`（默认 `walle`）。
-4. 已移植路由：`/`、`/login`、`/login_request`、`/motor`、`/settings`（motorOff/steerOff/animeMode/volume/streamer/restart）、`/animate`、`/servoControl`、`/arduinoConnect`（恒 Connected）、`/arduinoStatus`（电量）、`/gamepadStatus`（真实蓝牙手柄状态）、`/audio`（PCM5102 I2S 播放 wav）。HTTP 与 USB 串口共用 `evaluateCommand()`，行为一致。
-5. 尚未移植：`/tts`（云端 TTS，返回明确 Error）；BOM 扩展项（INMP441 麦克风、ASR-Pro 离线语音）。
-6. 显示屏（默认启用，`web_config.h` 的 `DISPLAYS_ENABLED`）：两块 GC9A01 圆屏做眼睛（矢量绘制，表情跟随 `i/j/k/l` 指令，2.5–6s 随机眨眼），一块 ST7789 做状态屏（电量/Wi-Fi/手柄/自动模式，1s 刷新）。三屏共用 SPI（SCK=21、MOSI=18，RST=47、BL=48 共接），各自 CS/DC 见 `web_config.h`。若 ST7789 画面偏移，调 `status_display.cpp` 构造函数的 offset 参数；眨眼动画期间 loop 有 ~40ms 阻塞，舵机控制由 dt 补偿，属正常。
-6. 蓝牙手柄：默认启用（`web_config.h` 的 `BT_GAMEPAD_ENABLED`），手柄进入配对模式即可连接；映射与 `gamepad.py` 一致（左摇杆行走、右摇杆头/颈、LT/RT 降臂、LB/RB 升臂、ABXY 眼部表情、Back 切自动模式、十字键随机音效/动画）。
-7. 摄像头（第二块 ESP32-S3-CAM）：编辑 `wall-e_esp32_cam/camera_pins.h` 选板型、在 sketch 顶部填 Wi-Fi 凭据（留空则连主控 `WallE` AP），安装 `Arduino_GFX` 库（眼屏驱动依赖），烧录后从串口拿到 IP，填入 `archive/wall-e_esp32/wall-e_esp32/data/index.html` 顶部的 `stream_url`（如 `http://192.168.4.3/stream`），重新上传 LittleFS 数据。小智主线面板则在 `walle_web_server.cc` 内嵌 HTML 的 `stream_url` 填同一地址。
-   - **microSD 拍照/录像**（SD 引脚当前按 XIAO Sense 预设：CS=2、SCK=7、MISO=8、MOSI=9；实际模块为通用 ESP32-S3-CAM，引脚待实机核对）：固件端点 `/capture`（拍照存 `/photos/`）、`/record?action=start|stop`（MJPEG→AVI 存 `/videos/`，帧率 `REC_FPS`）、`/files`（列表）、`/file?path=`（GET 下载 / DELETE 删除，GET 支持 HTTP Range 供主控分段取帧）。小智 Web 面板摄像头区按钮直连这些端点；语音工具 `self.walle.camera` 改经 `WalleCamLink`（UART 优先，链路 down 时回退 `config.h` 的 `CAM_MODULE_URL` HTTP 端点）。SD 挂载失败不影响推流。注意 `SD_CS_PIN=2` 与左眼 CS 撞脚（眼屏接线已确认，SD 引脚待核对）。
-   - **眼睛屏驱动**（`eye_display.h`，接线已确认 2026-07-31）：两块 1.28" 圆屏共享 SPI（SCK=42、MOSI=45、DC=41、RST=46，HSPI 主机），片选左=2/右=0，GC9A01 假设（待实机验证）；矢量眼睛 + 随机眨眼（复用 archive 绘制逻辑）；HTTP 端点 `/eyes?expr=neutral|sad|left|right`（词汇同主控 `self.walle.eyes`），UART `EYES` 命令已由 cam_link.h 接入；另有 overlay 绘制入口（大号倒计时数字 `eyeDisplayShowNumber`、JPEG 解码块 `eyeDisplayDrawRgbBitmap`、`eyeDisplayResume` 恢复表情）供拍照流程使用。
-   - **眼睛屏预览/回放**（CAM 本地回放，`walle_cam_link.cc`）：**主控侧眼屏已禁用**（第三方套件眼屏接在 CAM 模组上），预览/回放改由 CAM 在自己的眼屏上本地解码显示，主控经 UART 链路（CAM_PROTOCOL v1，`WalleCamLink`）下发：`self.walle.camera` 的 `photo`（`PHOTO`，CAM 侧 3-2-1 倒计时后拍摄并回放，工具返回值引导 LLM 口播"3、2、1，茄子"）、`preview`（`SHOW LATEST`）、`stop`（`ABORT`）、`record_start/stop`（`REC START/STOP`）；`replay` 眼屏暂不支持（留 v2），工具返回浏览器下载指引。Web 面板 Preview/Stop view 按钮走主控 `POST /camview` → `SHOW LATEST`/`ABORT`。链路 down（连续 3 次超时）时拍照/录像/表情回退 HTTP（`CAM_MODULE_URL`），SHOW/ABORT 无 HTTP 等价直接失败。`self.walle.eyes` 保留机械眼舵机表情并追加 `EYES <expr>` 下发 CAM。旧 `walle_cam_viewer.cc`（HTTP 拉帧解码）已废弃仅备查。
-8. 前端 `data/index.html`/`login.html` 由 `archive/arduino-pi/web_interface/templates/` 去 Jinja 化生成（静态路径、`CODEBLOCK_*` 与音效列表为构建期烘焙值）；Pi 端模板改动后需重新生成（会覆盖 `stream_url` 行）。
+原 `archive/wall-e_esp32/wall-e_esp32/`（内置 Web 控制端、PCM5102 I2S 音频、蓝牙手柄、GC9A01×2 眼睛 + ST7789 状态屏，可脱离树莓派）已于 2026-08 移除——自小智主线落地后即冻结，无回退价值。其舵机标定 sketch 保留并移至仓库主目录 `wall-e_esp32_calibration/`，小智主线标定仍用这份（烧一次标定 sketch 得到 `preset` 数组，贴到 `wall-e_xiaozhi/main/boards/walle/walle_motion.cc` 顶部；沿用同一块 60Hz 舵机板和机械结构时，UNO 版 `preset` 可直接复用）。
+
+#### ESP32-S3-CAM 推流固件（`wall-e_esp32_cam/`，主线配套）
+
+第二块 ESP32-S3-CAM：MJPEG 推流（`/stream`）+ microSD 拍照录像（`/capture`、`/record?action=start|stop`、`/files`、`/file?path=`）+ 眼睛屏驱动（`eye_display.h`，2 块 1.28 寸圆屏共享 HSPI，`/eyes?expr=neutral|sad|left|right`）。编辑 `wall-e_esp32_cam/camera_pins.h` 选板型、在 sketch 顶部填 Wi-Fi 凭据，安装 `Arduino_GFX` 与 `JPEGDEC` 库，烧录后从串口拿到 IP，填入主控 Web 面板的 `stream_url`（`wall-e_xiaozhi/main/boards/walle/walle_web_server.cc` 内嵌 HTML）。板型预设与 SD 引脚当前按 XIAO Sense 写，实际模块为通用 ESP32-S3-CAM（OV3660），待实机核对（见 `docs/NEW_HARDWARE_MIGRATION.md`）。主控↔CAM 经 UART 交互（CAM_PROTOCOL v1，见 `docs/CAM_PROTOCOL.md`）；MCP 工具 `self.walle.camera` 的 photo/preview/record/stop 走 `WalleCamLink`（UART 优先，链路 down 回退 `CAM_MODULE_URL` HTTP 端点）。
 
 ### 4.2 树莓派 Web 服务
 
@@ -213,7 +197,7 @@ setpos[i] = int(number * 0.01 * (preset[i][1] - preset[i][0]) + preset[i][0]);
 
 下标含义：`0=head`、`1=necT`、`2=necB`、`3=eyeR`、`4=eyeL`、`5=armL`、`6=armR`、`7=broL`、`8=broR`。
 
-**ESP32-S3 版**（`archive/wall-e_esp32/wall-e_esp32/`）在上述逻辑关节顺序与 PWM 板物理通道之间加了一层 `servoChannel[]` 映射（默认适配第三方线束：通道 `0=eyeL`、`1=eyeR`、`2=head`、`3=necT`、`4=necB`、`5=armL`、`6=armR`、`7=broL`、`8=broR`）。`preset`、`setpos`、动画、串口指令仍全部使用逻辑关节顺序；接线或线束不同时只需改 `servoChannel[]` 一个数组（标定 sketch 内有同一张表）。
+**小智主线 / ESP32-S3 标定 sketch**（`wall-e_esp32_calibration/`）在逻辑关节顺序与 PWM 板物理通道之间加了一层 `servoChannel[]` 映射（默认适配第三方线束：通道 `0=eyeL`、`1=eyeR`、`2=head`、`3=necT`、`4=necB`、`5=armL`、`6=armR`、`7=broL`、`8=broR`）。`preset`、`setpos`、动画、串口指令仍全部使用逻辑关节顺序；接线或线束不同时只需改 `servoChannel[]` 一个数组（标定 sketch 与 `walle_motion.cc` 内有同一张表）。
 
 ### 6.5 新增指令的约定
 

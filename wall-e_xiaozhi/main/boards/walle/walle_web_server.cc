@@ -80,7 +80,7 @@ input[type=range]{flex:1}
 <button id="auto" onclick="toggleAuto()">Auto mode: ?</button>
 
 <script>
-// ESP32-S3-CAM MJPEG stream (archive/wall-e_esp32/wall-e_esp32_cam/);
+// ESP32-S3-CAM MJPEG stream (wall-e_esp32_cam/);
 // fill in the cam module's address, e.g. "http://192.168.1.50/stream".
 // Leave empty to hide the camera area.
 const stream_url = "";

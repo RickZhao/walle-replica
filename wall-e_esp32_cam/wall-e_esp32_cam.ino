@@ -21,8 +21,8 @@
  *    library (moononournation, for the eye displays) and the JPEGDEC
  *    library (bitbank2, for the eye-display photo preview).
  * 4. Upload, open the serial monitor (115200) and note the IP address.
- * 5. Enter that address as stream_url in wall-e_esp32/data/index.html
- *    (e.g. "http://192.168.4.3/stream") and re-upload LittleFS data.
+ * 5. Enter that address as stream_url in the main controller's web panel
+ *    (wall-e_xiaozhi/main/boards/walle/walle_web_server.cc), e.g. "http://192.168.4.3/stream".
  *
  * Endpoints:
  *   /        -> plain text status page (module name + stream URL + SD status)
@@ -144,7 +144,7 @@ static volatile bool recording = false;
 static esp_err_t indexHandler(httpd_req_t *req) {
 	String page = "Wall-E camera module is running.\n";
 	page += "MJPEG stream: http://" + WiFi.localIP().toString() + "/stream\n";
-	page += "Set this as stream_url in wall-e_esp32/data/index.html\n";
+	page += "Set this as stream_url in the main controller's web panel\n";
 #if EYE_DISPLAYS_ENABLED
 	page += String("Eye displays: on (expr=") + eyeDisplayExpressionName() + ", /eyes?expr=neutral|sad|left|right)\n";
 #else

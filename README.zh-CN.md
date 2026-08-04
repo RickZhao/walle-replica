@@ -7,12 +7,11 @@ Wall-E 复刻版机器人的控制代码与控制器代码。关于该机器人�
 
 <br />
 
-> **本仓库（fork）在上游基础上新增了三套固件与自制硬件：**
+> **本仓库（fork）在上游基础上新增了两套固件与自制硬件：**
 >
 > | 目录 | 框架 | 说明 |
 > |------|------|------|
 > | `wall-e_xiaozhi/` | ESP-IDF | **主线**：单块 ESP32-S3 语音机器人（小智方案：唤醒词 + 云端 LLM + MCP 动作工具 + Web 控制面板 + ML307A 4G 回退；眼睛屏在 CAM 模组上，主控侧禁用），详见 `docs/XIAOZHI_MIGRATION.md` |
-> | `archive/wall-e_esp32/wall-e_esp32/` | Arduino (ESP32-S3) | ESP32 单机版：内置 Web 控制端、I2S 音频、蓝牙手柄、双 GC9A01 眼睛 + ST7789 状态屏。**已冻结**（保留作回退） |
 > | `wall-e_esp32_cam/` | Arduino (ESP32-S3-CAM) | 第二块 ESP32-S3-CAM 的 MJPEG 推流固件 |
 > | `hardware/walle-shield/` | KiCad 10 | 模块化背板 PCB，替代杜邦线飞线 |
 > | `hardware/` | — | 第三方 ESP32-S3 方案 BOM 分析（`另一套硬件方案.md`） |

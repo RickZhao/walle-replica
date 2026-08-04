@@ -1,8 +1,8 @@
-# Archive — 非主线方案归档
+# Archive - 非主线方案归档
 
-本目录收录仓库中**不再作为主线演进**的两套完整方案，代码保持可编译、可回退使用。
+本目录收录仓库中**不再作为主线演进**的归档方案，代码保持可编译、可回退使用。
 
-## arduino-pi/ — 原始方案（Arduino UNO + 树莓派）
+## arduino-pi/ - 原始方案（Arduino UNO + 树莓派）
 
 上游 chillibasket/walle-replica 的经典架构：
 
@@ -15,14 +15,9 @@
 
 状态：**维护中**（跟随上游），使用文档见 `README.md` / `README.zh-CN.md` 的安装说明章节。
 
-## wall-e_esp32/ — ESP32-S3 单机版（已冻结）
+## 已移除：wall-e_esp32/ - ESP32-S3 单机版
 
-| 目录 | 说明 |
-|------|------|
-| `wall-e_esp32/` | ESP32-S3 移植版固件：内置 Web 控制端、PCM5102 I2S 音频、蓝牙手柄、GC9A01×2 眼睛 + ST7789 状态屏 |
-| `wall-e_esp32_calibration/` | ESP32 版舵机标定 sketch（小智固件标定也用这份） |
-
-状态：**冻结**（2026-07 起），不再演进，保留作树莓派方案回退。注意：固件内的相对路径引用（如 `data/` LittleFS 目录、标定 sketch 与主 sketch 的关系）已随归档目录迁移，使用时按 `archive/wall-e_esp32/` 下的实际位置打开。
+原 ESP32-S3 单机版固件（内置 Web 控制端、PCM5102 I2S 音频、蓝牙手柄、GC9A01×2 眼睛 + ST7789 状态屏，可脱离树莓派）已于 2026-08 移除：该方案自小智主线（`../wall-e_xiaozhi/`）落地后即冻结，已无回退价值。其舵机标定 sketch 保留并移至仓库主目录 `../wall-e_esp32_calibration/`（小智主线标定仍用这份）。
 
 > ESP32-S3-CAM 推流固件（`wall-e_esp32_cam/`）因与小智主线配套使用，**不在归档内**，位于仓库主目录。
 

@@ -41,7 +41,7 @@
  *                        {150, 600},  // eyebrow left
  *                        {150, 600}}; // eyebrow right
  *
- *    Copy the array and paste it into the preset array in [wall-e_esp32.ino]
+ *    Copy the array and paste it into the preset array in walle_motion.cc
  */
 
 #include <Wire.h>
@@ -59,7 +59,7 @@
 // -- -- -- -- -- -- -- -- -- -- -- -- -- --
 #define SERVOS 9           // Number of servo motors
 
-// Physical PWM channel for each logical joint (same table as wall-e_esp32.ino).
+// Physical PWM channel for each logical joint (same table as walle_motion.cc).
 // Logical joint order (messages and output preset): head, necT, necB, eyeR, eyeL, armL, armR, broL, broR
 // Third-party harness channel order: 0=eyeL, 1=eyeR, 2=head rotation, 3=head up/down,
 // 4=head extend/retract, 5=armL, 6=armR, 7=broL, 8=broR
@@ -215,7 +215,7 @@ void softStart() {
 /// OUTPUT THE RESULTS
 // -------------------------------------------------------------------
 void outputResults() {
-	Serial.println("Calibrated values - please copy and paste these into the 'wall-e_esp32.ino' sketch:\n");
+	Serial.println("Calibrated values - please copy and paste these into the 'preset' array in walle_motion.cc:\n");
 	Serial.print("int preset[][2] =  {{"); Serial.print(preset[0][0]); Serial.print(","); Serial.print(preset[0][1]); Serial.println("},  // head rotation");
 	Serial.print("                    {"); Serial.print(preset[1][0]); Serial.print(","); Serial.print(preset[1][1]); Serial.println("},  // neck top");
 	Serial.print("                    {"); Serial.print(preset[2][0]); Serial.print(","); Serial.print(preset[2][1]); Serial.println("},  // neck bottom");

@@ -19,7 +19,7 @@
 
 控制面统一入口：`WalleMotion::EvaluateCommand(prefix, number)`——MCP 工具、USB 串口、Web 路由全部走同一分发器，语义与 Arduino 版 `docs/SERIAL_PROTOCOL.md` 完全一致。
 
-Arduino 版固件（`archive/wall-e_esp32/wall-e_esp32/`）**冻结保留**，作为树莓派方案回退，不再演进。
+原 ESP32-S3 单机版固件（`archive/wall-e_esp32/`）已于 2026-08 移除；舵机标定 sketch 保留在仓库主目录 `wall-e_esp32_calibration/`。
 
 ## 2. 环境搭建（Windows）
 
@@ -147,7 +147,7 @@ ST7789 1.3" 240x240，**独立 SPI 总线**（SCLK=14/MOSI=47/DC=40/RST=45/BL=42
 
 ## 10. 舵机标定
 
-标定流程仍用 Arduino 版 `archive/wall-e_esp32/wall-e_esp32_calibration/`（在 Arduino IDE 烧一次标定 sketch，得到 `preset` 数组），把结果贴到 `wall-e_xiaozhi/main/boards/walle/walle_motion.cc` 顶部的 `preset[][2]`。逻辑关节顺序与第三方线束通道的映射（`servo_channel[]`）两处保持一致。
+标定流程仍用 Arduino 版 `wall-e_esp32_calibration/`（仓库主目录，由 `archive/wall-e_esp32/` 移出；在 Arduino IDE 烧一次标定 sketch，得到 `preset` 数组），把结果贴到 `wall-e_xiaozhi/main/boards/walle/walle_motion.cc` 顶部的 `preset[][2]`。逻辑关节顺序与第三方线束通道的映射（`servo_channel[]`）两处保持一致。
 
 ## 11. 服务端切换（官方云 → 自建）
 

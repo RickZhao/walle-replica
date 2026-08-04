@@ -7,12 +7,11 @@ Robot and controller code for a Wall-E replica robot. For more information about
 
 <br />
 
-> **This fork adds three extra firmwares and custom hardware on top of the upstream project:**
+> **This fork adds two extra firmwares and custom hardware on top of the upstream project:**
 >
 > | Path | Framework | Description |
 > |------|-----------|-------------|
 > | `wall-e_xiaozhi/` | ESP-IDF | **Mainline**: single ESP32-S3 voice robot based on xiaozhi-esp32 (wake word + cloud LLM + MCP motion tools + web control panel + ML307A 4G fallback; eye display lives on the CAM module, disabled on the main MCU). See `docs/XIAOZHI_MIGRATION.md` |
-> | `archive/wall-e_esp32/wall-e_esp32/` | Arduino (ESP32-S3) | Standalone ESP32 port: built-in web server, I2S audio, Bluetooth gamepad, GC9A01 ×2 eyes + ST7789 status display. **Frozen** (kept as fallback) |
 > | `wall-e_esp32_cam/` | Arduino (ESP32-S3-CAM) | MJPEG camera streamer for a second ESP32-S3-CAM board |
 > | `hardware/walle-shield/` | KiCad 10 | Modular backplane PCB replacing dupont wiring |
 > | `hardware/` | — | Third-party ESP32-S3 BOM analysis (`另一套硬件方案.md`) |
