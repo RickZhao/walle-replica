@@ -28,6 +28,16 @@ _autosave-*
 
 # ESP-IDF build artifacts (xiaozhi-esp32 vendored tree)
 wall-e_xiaozhi/build/
+
+# ESP-IDF CAM project
+wall-e_esp32_cam/build/
+wall-e_esp32_cam/managed_components/
+wall-e_esp32_cam/sdkconfig
+wall-e_esp32_cam/dependencies.lock
+
+# ESP-IDF calibration project
+wall-e_esp32_calibration/build/
+wall-e_esp32_calibration/sdkconfig
 wall-e_xiaozhi/managed_components/
 wall-e_xiaozhi/sdkconfig
 wall-e_xiaozhi/sdkconfig.old
