@@ -24,8 +24,8 @@
 #define CAMERA_PINS_H
 
 // Select your camera module (exactly one):
-#define CAM_BOARD_XIAO_ESP32S3_SENSE
-// #define CAM_BOARD_FREENOVE_ESP32S3_WROOM
+// #define CAM_BOARD_XIAO_ESP32S3_SENSE
+#define CAM_BOARD_FREENOVE_ESP32S3_WROOM
 // #define CAM_BOARD_ESP32S3_EYE
 
 

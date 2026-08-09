@@ -9,12 +9,14 @@
 
 #include "walle_cam_link.h"
 #include "config.h"
+#include "ssid_manager.h"
 
 #include <driver/uart.h>
 #include <esp_http_client.h>
 #include <esp_log.h>
 #include <esp_timer.h>
 
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -116,6 +118,21 @@ static int ExtractJsonInt(const std::string& json, const char* key) {
 
 static bool HttpStatusOk(const std::string& body) {
     return body.find("\"status\":\"OK\"") != std::string::npos;
+}
+
+/// URL-encode a string into dst (caller provides buffer >= 3 * strlen(src) + 1).
+static void UrlEncode(char *dst, const char *src) {
+    while (*src) {
+        unsigned char c = static_cast<unsigned char>(*src);
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            *dst++ = static_cast<char>(c);
+        } else {
+            snprintf(dst, 4, "%%%02X", c);
+            dst += 3;
+        }
+        src++;
+    }
+    *dst = '\0';
 }
 
 /// The HTTP API returns bare file names ("IMG_0007.jpg"), the UART
@@ -394,6 +411,8 @@ void WalleCamLink::HealthMain() {
             std::string resp;
             if (DoCommand("PING", resp, kControlTimeoutMs, 1, nullptr)) {
                 ESP_LOGI(TAG, "CAM link recovered");
+                // Push WiFi credentials now that the link is up
+                SyncWifi();
             }
         }
     }
@@ -423,7 +442,15 @@ bool WalleCamLink::Hello() {
     std::string status;
     if (GetStatus(status)) {   // §5: refresh state after (re)connect
         ESP_LOGI(TAG, "CAM status: %s", status.c_str());
+        // Extract CAM IP from status for the web panel
+        size_t ip_pos = status.find("ip=");
+        if (ip_pos != std::string::npos) {
+            size_t ip_end = status.find(' ', ip_pos);
+            cam_ip_ = status.substr(ip_pos + 3, ip_end - ip_pos - 3);
+        }
     }
+    // Push current WiFi credentials so the CAM can connect to the same network
+    SyncWifi();
     return true;
 }
 
@@ -570,6 +597,40 @@ bool WalleCamLink::Abort() {
     }
     std::string resp;
     return Command("ABORT", resp, kControlTimeoutMs, 1, nullptr);
+}
+
+bool WalleCamLink::SyncWifi() {
+    auto &ssid_list = SsidManager::GetInstance().GetSsidList();
+    if (ssid_list.empty()) {
+        ESP_LOGI(TAG, "No saved WiFi credentials to sync");
+        return false;
+    }
+    // First entry is the most-recently-connected SSID
+    const auto &item = ssid_list[0];
+    if (item.ssid.empty()) return false;
+
+    // URL-encode so spaces/special chars survive the protocol line format
+    char essid[128], epass[256];
+    UrlEncode(essid, item.ssid.c_str());
+    UrlEncode(epass, item.password.c_str());
+
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd), "WIFI_CREDS %s %s", essid, epass);
+
+    ESP_LOGI(TAG, "Syncing WiFi to CAM: %s", item.ssid.c_str());
+    std::string resp;
+    // 15s timeout: WiFi reconnection on the CAM side can take a while
+    bool ok = Command(cmd, resp, 15000, 1);
+    if (ok) {
+        ESP_LOGI(TAG, "CAM WiFi sync OK: %s", resp.c_str());
+        // "OK WIFI <ip>" → store the IP
+        if (resp.compare(0, 8, "OK WIFI ") == 0) {
+            cam_ip_ = resp.substr(8);
+        }
+    } else {
+        ESP_LOGW(TAG, "CAM WiFi sync failed: %s", last_error().c_str());
+    }
+    return ok;
 }
 
 

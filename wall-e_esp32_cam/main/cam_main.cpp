@@ -21,6 +21,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdarg>
+#include <cctype>
 #include <cmath>
 #include <vector>
 #include <sys/stat.h>
@@ -36,6 +37,7 @@
 #include "esp_timer.h"
 #include "esp_random.h"
 #include "nvs_flash.h"
+#include "nvs.h"
 #include "driver/uart.h"
 #include "driver/spi_common.h"
 #include "driver/sdspi_host.h"
@@ -67,7 +69,7 @@ static const char *TAG = "cam";
 #define CAM_FRAME_SIZE     FRAMESIZE_VGA
 #define CAM_JPEG_QUALITY   12
 
-#define CAM_SD_ENABLED     1
+#define CAM_SD_ENABLED     1   // SD code compiled but init skipped (GPIO2 conflict with EYE_L_CS)
 #define SD_CS_PIN          2
 #define SD_SCK_PIN         7
 #define SD_MISO_PIN        8
@@ -80,7 +82,9 @@ static const char *TAG = "cam";
 #define EYE_SPI_MOSI        45
 #define EYE_SPI_DC          41
 #define EYE_SPI_RST         46
+// NOTE: EYE_L_CS conflicts with SD_CS_PIN (both GPIO 2) — verify PCB wiring
 #define EYE_L_CS            2
+// NOTE: EYE_R_CS uses GPIO 0 (strapping pin) — ensure pull-up is not defeated
 #define EYE_R_CS            0
 
 #define CAM_LINK_UART        UART_NUM_1
@@ -102,35 +106,39 @@ enum EyeExpression {
     EYE_TILT_RIGHT,
 };
 
-// Eye geometry (240x240 display)
+// Wall-E eye geometry (240x240 round display)
 #define EYE_CX       120
 #define EYE_CY       120
-#define LENS_W       170
-#define LENS_H       130
-#define LENS_RADIUS  40
-#define IRIS_RADIUS  38
-#define GAZE_DX      22
-#define GAZE_DY_SAD  18
+#define OUTER_R      118       // outer lens ring radius
+#define SCLERA_R     94        // white sclera (0.8x diameter)
+#define PUPIL_R      35        // blue pupil (0.3x diameter)
+#define DOT_R        7         // white dot inside pupil (0.2x pupil diameter)
+#define DOT_DX       12        // dot offset from pupil center X (upper-right)
+#define DOT_DY       -12       // dot offset from pupil center Y
+#define LID_Y        109       // permanent upper eyelid Y (12% of sclera covered)
+#define GAZE_DX      28        // pupil shift for left/right gaze
+#define GAZE_DY_SAD  22        // pupil shift for sad expression
 
-// RGB565 colors
-#define COL_LENS     0xE71C
-#define COL_IRIS     0x2965
-#define COL_PUPIL    0x1082
-#define COL_HILIGHT  0xFFFF
+// Panel hardware is BGR with ESP32 LE SPI → BGR565 values byte-swapped.
+// Orange-red (~230,60,0): BGR=0x01FC → LE = 0xFC01
+// Dark eyelid (~192,40,0): BGR=0x0157 → LE = 0x5701
+// Deep blue (~16,32,200): BGR=0xC882 → LE = 0x82C8
+// Dark ring (~128,32,0):  BGR=0x0110 → LE = 0x1001
+#define COL_BG        0xFC01
+#define COL_LID       0x5701
 #define COL_WHITE     0xFFFF
+#define COL_PUPIL     0x82C8
 #define COL_BLACK     0x0000
-
-#define BLINK_MIN_MS 2500
-#define BLINK_MAX_MS 6000
-#define BLINK_STEP_MS 40
-#define BLINK_STEPS   4
+#define COL_RING      0x1001
 
 #if EYE_DISPLAYS_ENABLED
 static esp_lcd_panel_io_handle_t eye_io_L = nullptr;
 static esp_lcd_panel_io_handle_t eye_io_R = nullptr;
 static esp_lcd_panel_handle_t eye_panel_L = nullptr;
 static esp_lcd_panel_handle_t eye_panel_R = nullptr;
-static uint16_t *eye_fb = nullptr;  // 240x240 RGB565 framebuffer (115200 bytes)
+static uint16_t *eye_fb = nullptr;  // RGB565 framebuffer
+static int eye_fb_w = 0;            // actual framebuffer width (pixels)
+static int eye_fb_h = 0;            // actual framebuffer height (pixels)
 #endif
 
 static EyeExpression eye_expr = EYE_NEUTRAL;
@@ -268,30 +276,36 @@ private:
 #if EYE_DISPLAYS_ENABLED
 
 static void fbFillScreen(uint16_t color) {
-    for (int i = 0; i < 240 * 240; i++) eye_fb[i] = color;
+    if (!eye_fb) return;
+    int total = eye_fb_w * eye_fb_h;
+    for (int i = 0; i < total; i++) eye_fb[i] = color;
 }
 
 static void fbFillRect(int x, int y, int w, int h, uint16_t color) {
+    if (!eye_fb) return;
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
-    if (x + w > 240) w = 240 - x;
-    if (y + h > 240) h = 240 - y;
+    if (x + w > eye_fb_w) w = eye_fb_w - x;
+    if (y + h > eye_fb_h) h = eye_fb_h - y;
+    if (w <= 0 || h <= 0) return;
     for (int row = y; row < y + h; row++) {
         for (int col = x; col < x + w; col++) {
-            eye_fb[row * 240 + col] = color;
+            eye_fb[row * eye_fb_w + col] = color;
         }
     }
 }
 
 static void fbFillCircle(int cx, int cy, int r, uint16_t color) {
+    if (!eye_fb) return;
     for (int dy = -r; dy <= r; dy++) {
         int dx_max = (int)sqrtf((float)(r * r - dy * dy));
         int y = cy + dy;
-        if (y < 0 || y >= 240) continue;
+        if (y < 0 || y >= eye_fb_h) continue;
         int x0 = cx - dx_max, x1 = cx + dx_max;
         if (x0 < 0) x0 = 0;
-        if (x1 >= 240) x1 = 239;
-        for (int x = x0; x <= x1; x++) eye_fb[y * 240 + x] = color;
+        if (x1 >= eye_fb_w) x1 = eye_fb_w - 1;
+        if (x0 > x1) continue;
+        for (int x = x0; x <= x1; x++) eye_fb[y * eye_fb_w + x] = color;
     }
 }
 
@@ -305,19 +319,21 @@ static void fbFillRoundRect(int x, int y, int w, int h, int r, uint16_t color) {
 }
 
 static void fbFillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint16_t color) {
+    if (!eye_fb) return;
     // Bounding box
     int min_y = y1 < y2 ? (y1 < y3 ? y1 : y3) : (y2 < y3 ? y2 : y3);
     int max_y = y1 > y2 ? (y1 > y3 ? y1 : y3) : (y2 > y3 ? y2 : y3);
     if (min_y < 0) min_y = 0;
-    if (max_y >= 240) max_y = 239;
+    if (max_y >= eye_fb_h) max_y = eye_fb_h - 1;
+    if (min_y > max_y) return;
 
     auto orient = [](int ax, int ay, int bx, int by, int px, int py) -> int {
         return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
     };
 
     for (int y = min_y; y <= max_y; y++) {
-        int min_x = 240, max_x = -1;
-        for (int x = 0; x < 240; x++) {
+        int min_x = eye_fb_w, max_x = -1;
+        for (int x = 0; x < eye_fb_w; x++) {
             int o1 = orient(x1, y1, x2, y2, x, y);
             int o2 = orient(x2, y2, x3, y3, x, y);
             int o3 = orient(x3, y3, x1, y1, x, y);
@@ -330,43 +346,58 @@ static void fbFillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint1
         }
         if (min_x <= max_x) {
             for (int x = min_x; x <= max_x; x++) {
-                eye_fb[y * 240 + x] = color;
+                eye_fb[y * eye_fb_w + x] = color;
             }
         }
     }
 }
 
 static void fbFlush() {
-    esp_lcd_panel_draw_bitmap(eye_panel_L, 0, 0, 239, 239, eye_fb);
-    esp_lcd_panel_draw_bitmap(eye_panel_R, 0, 0, 239, 239, eye_fb);
+    if (!eye_fb) return;
+    // 4 quarters = 60 lines × 28800 bytes each — small enough for
+    // reliable PSRAM bounce buffer allocation even with fragmentation.
+    const int Q = eye_fb_h / 4;
+    for (int i = 0; i < 4; i++) {
+        int y = i * Q;
+        int h = (i == 3) ? eye_fb_h - y : Q;
+        esp_lcd_panel_draw_bitmap(eye_panel_L, 0, y, eye_fb_w, y + h,
+                                  eye_fb + y * eye_fb_w);
+        esp_lcd_panel_draw_bitmap(eye_panel_R, 0, y, eye_fb_w, y + h,
+                                  eye_fb + y * eye_fb_w);
+    }
 }
 
-static void drawEye(EyeExpression expr, float lid) {
-    fbFillScreen(COL_BLACK);
+static void drawEye(EyeExpression expr) {
+    // Orange-red background
+    fbFillScreen(COL_BG);
 
-    fbFillRoundRect(EYE_CX - LENS_W / 2, EYE_CY - LENS_H / 2,
-                    LENS_W, LENS_H, LENS_RADIUS, COL_LENS);
+    // Thin lens ring at outer edge (drawn first, overpainted by eye)
+    fbFillCircle(EYE_CX, EYE_CY, OUTER_R, COL_RING);
+    fbFillCircle(EYE_CX, EYE_CY, OUTER_R - 3, COL_BG);
 
+    // Gaze direction
     int dx = 0, dy = 0;
     if (expr == EYE_TILT_LEFT)  dx = -GAZE_DX;
     if (expr == EYE_TILT_RIGHT) dx =  GAZE_DX;
     if (expr == EYE_SAD)        dy =  GAZE_DY_SAD;
 
-    fbFillCircle(EYE_CX + dx, EYE_CY + dy, IRIS_RADIUS, COL_IRIS);
-    fbFillCircle(EYE_CX + dx, EYE_CY + dy, IRIS_RADIUS / 2, COL_PUPIL);
-    fbFillCircle(EYE_CX + dx - 10, EYE_CY + dy - 10, 7, COL_HILIGHT);
+    int px = EYE_CX + dx, py = EYE_CY + dy;
 
+    // White sclera (drawn after ring so it stays visible)
+    fbFillCircle(EYE_CX, EYE_CY, SCLERA_R, COL_WHITE);
+
+    // Blue pupil
+    fbFillCircle(px, py, PUPIL_R, COL_PUPIL);
+
+    // White dot inside pupil (upper-right of pupil center)
+    fbFillCircle(px + DOT_DX, py + DOT_DY, DOT_R, COL_WHITE);
+
+    // Permanent upper eyelid — covers top of sclera and pupil
+    fbFillRect(0, 0, eye_fb_w, LID_Y, COL_LID);
+
+    // Sad: extra droop on upper lid
     if (expr == EYE_SAD) {
-        fbFillTriangle(EYE_CX - LENS_W / 2, EYE_CY - LENS_H / 2,
-                       EYE_CX + LENS_W / 2, EYE_CY - LENS_H / 2,
-                       EYE_CX + LENS_W / 2, EYE_CY - 20,
-                       COL_BLACK);
-    }
-
-    if (lid > 0.0f) {
-        int bar = (int)((LENS_H / 2 + 10) * lid);
-        fbFillRect(0, 0, 240, EYE_CY - LENS_H / 2 + bar, COL_BLACK);
-        fbFillRect(0, EYE_CY + LENS_H / 2 - bar, 240, 240 - (EYE_CY + LENS_H / 2 - bar), COL_BLACK);
+        fbFillRect(0, 0, eye_fb_w, LID_Y + SCLERA_R / 4, COL_LID);
     }
 
     fbFlush();
@@ -401,7 +432,7 @@ enum CamLinkState {
 };
 
 // Forward declarations
-static void redrawEyes() { drawEye(eye_expr, eye_lid_close); }
+static void redrawEyes() { drawEye(eye_expr); }
 
 #endif // EYE_DISPLAYS_ENABLED
 
@@ -411,9 +442,24 @@ static void redrawEyes() { drawEye(eye_expr, eye_lid_close); }
 
 static void eyeDisplayInit() {
 #if EYE_DISPLAYS_ENABLED
-    // Allocate framebuffer in PSRAM
-    eye_fb = (uint16_t *)heap_caps_malloc(240 * 240 * 2, MALLOC_CAP_SPIRAM);
-    assert(eye_fb);
+    // Framebuffer: prefer DMA memory (SPI can DMA directly), fall back
+    // to PSRAM + chunked flush (SPI bounce buffers stay small).
+    eye_fb = (uint16_t *)heap_caps_malloc(240 * 240 * 2, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    if (!eye_fb) {
+        eye_fb = (uint16_t *)heap_caps_malloc(240 * 240 * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    if (!eye_fb) {
+        eye_fb = (uint16_t *)heap_caps_malloc(240 * 240 * 2, MALLOC_CAP_8BIT);
+    }
+    if (eye_fb) {
+        eye_fb_w = 240;
+        eye_fb_h = 240;
+    } else {
+        eye_fb_w = 0;
+        eye_fb_h = 0;
+        ESP_LOGW(TAG, "Eye displays: not enough RAM for 240x240 framebuffer — disabled");
+        // Don't assert — continue without eye displays
+    }
 
     // SPI bus for eye displays
     spi_bus_config_t bus_cfg = {};
@@ -422,7 +468,7 @@ static void eyeDisplayInit() {
     bus_cfg.sclk_io_num = EYE_SPI_SCK;
     bus_cfg.quadwp_io_num = -1;
     bus_cfg.quadhd_io_num = -1;
-    bus_cfg.max_transfer_sz = 240 * 240 * 2 + 8;
+    bus_cfg.max_transfer_sz = 240 * 60 * 2 + 64;  // quarter frame — safe for PSRAM bounce buffer
     ESP_ERROR_CHECK(spi_bus_initialize(EYE_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
 
     // Left eye panel IO
@@ -430,8 +476,8 @@ static void eyeDisplayInit() {
     io_cfg_L.cs_gpio_num = (gpio_num_t)EYE_L_CS;
     io_cfg_L.dc_gpio_num = (gpio_num_t)EYE_SPI_DC;
     io_cfg_L.spi_mode = 0;
-    io_cfg_L.pclk_hz = 40 * 1000 * 1000;
-    io_cfg_L.trans_queue_depth = 10;
+    io_cfg_L.pclk_hz = 20 * 1000 * 1000;  // 20 MHz — more tolerant of wiring
+    io_cfg_L.trans_queue_depth = 2;   // keep low — each 57KB PSRAM transfer needs bounce buffer
     io_cfg_L.lcd_cmd_bits = 8;
     io_cfg_L.lcd_param_bits = 8;
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)EYE_SPI_HOST,
@@ -442,60 +488,52 @@ static void eyeDisplayInit() {
     io_cfg_R.cs_gpio_num = (gpio_num_t)EYE_R_CS;
     io_cfg_R.dc_gpio_num = (gpio_num_t)EYE_SPI_DC;
     io_cfg_R.spi_mode = 0;
-    io_cfg_R.pclk_hz = 40 * 1000 * 1000;
-    io_cfg_R.trans_queue_depth = 10;
+    io_cfg_R.pclk_hz = 20 * 1000 * 1000;  // 20 MHz — more tolerant of wiring
+    io_cfg_R.trans_queue_depth = 2;   // keep low — each 57KB PSRAM transfer needs bounce buffer
     io_cfg_R.lcd_cmd_bits = 8;
     io_cfg_R.lcd_param_bits = 8;
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)EYE_SPI_HOST,
                                               &io_cfg_R, &eye_io_R));
 
-    // GC9A01 panel configs
+    // GC9A01 panel configs (both share RST pin - only left owns it)
     esp_lcd_panel_dev_config_t panel_cfg = {};
     panel_cfg.reset_gpio_num = (gpio_num_t)EYE_SPI_RST;
     panel_cfg.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB;
     panel_cfg.bits_per_pixel = 16;
 
     ESP_ERROR_CHECK(esp_lcd_new_panel_gc9a01(eye_io_L, &panel_cfg, &eye_panel_L));
+
+    panel_cfg.reset_gpio_num = GPIO_NUM_NC;  // right shares RST with left
     ESP_ERROR_CHECK(esp_lcd_new_panel_gc9a01(eye_io_R, &panel_cfg, &eye_panel_R));
 
     ESP_ERROR_CHECK(esp_lcd_panel_reset(eye_panel_L));
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(eye_panel_R));
+    // Right panel reset skipped - shares the same RST line as left
     ESP_ERROR_CHECK(esp_lcd_panel_init(eye_panel_L));
     ESP_ERROR_CHECK(esp_lcd_panel_init(eye_panel_R));
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(eye_panel_L, true));
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(eye_panel_R, true));
+    // Turn on the display output — init only sends SLPOUT (wake), DISPON is separate
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(eye_panel_L, true));
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(eye_panel_R, true));
 
     eye_expr = EYE_NEUTRAL;
     eye_lid_close = 0.0f;
-    redrawEyes();
-    ESP_LOGI(TAG, "Eye displays started (2x GC9A01, shared SPI SCK=%d MOSI=%d DC=%d RST=%d)",
-             EYE_SPI_SCK, EYE_SPI_MOSI, EYE_SPI_DC, EYE_SPI_RST);
+    if (eye_fb) {
+        redrawEyes();
+        ESP_LOGI(TAG, "Eye displays started (2x GC9A01, shared SPI SCK=%d MOSI=%d DC=%d RST=%d)",
+                 EYE_SPI_SCK, EYE_SPI_MOSI, EYE_SPI_DC, EYE_SPI_RST);
+    } else {
+        ESP_LOGW(TAG, "Eye displays: framebuffer allocation failed — eyes will be blank");
+    }
 #endif
 }
 
 static void eyeDisplayLoop() {
 #if EYE_DISPLAYS_ENABLED
-    if (eye_overlay_active) return;
-    int64_t now = esp_timer_get_time();
-    if (eye_blink_phase == 0 && now >= eye_next_blink_at) {
-        eye_blink_phase = 1;
-        eye_next_blink_frame_at = now;
-    }
-    if (eye_blink_phase != 0 && now >= eye_next_blink_frame_at) {
-        eye_next_blink_frame_at = now + BLINK_STEP_MS * 1000;
-        if (eye_blink_phase == 1) {
-            eye_lid_close += 1.0f / BLINK_STEPS;
-            if (eye_lid_close >= 1.0f) { eye_lid_close = 1.0f; eye_blink_phase = 2; }
-        } else {
-            eye_lid_close -= 1.0f / BLINK_STEPS;
-            if (eye_lid_close <= 0.0f) {
-                eye_lid_close = 0.0f;
-                eye_blink_phase = 0;
-                eye_next_blink_at = now + (BLINK_MIN_MS + esp_random() % (BLINK_MAX_MS - BLINK_MIN_MS)) * 1000LL;
-            }
-        }
-        redrawEyes();
-    }
+    // No shutter animation — expression changes (via UART EYES command or
+    // photo countdown overlay) are handled directly by their callers.
+    (void)eye_blink_phase; (void)eye_next_blink_at; (void)eye_next_blink_frame_at;
+    (void)eye_lid_close;
 #endif
 }
 
@@ -739,10 +777,10 @@ static bool LinkShowJpegFile(const char *path) {
         return false;
     }
 
-    // Center the image on 240x240 displays
+    // Center the image on the displays
     uint16_t img_w = info.width, img_h = info.height;
-    int off_x = ((int)img_w > 240) ? 0 : (240 - (int)img_w) / 2;
-    int off_y = ((int)img_h > 240) ? 0 : (240 - (int)img_h) / 2;
+    int off_x = ((int)img_w > eye_fb_w) ? 0 : (eye_fb_w - (int)img_w) / 2;
+    int off_y = ((int)img_h > eye_fb_h) ? 0 : (eye_fb_h - (int)img_h) / 2;
 
     int out_size = 0;
     jpeg_dec_get_outbuf_len(dec, &out_size);
@@ -766,15 +804,15 @@ static bool LinkShowJpegFile(const char *path) {
         eyeDisplayFillScreen(COL_BLACK);
 
         uint16_t *src = (uint16_t *)outbuf;
-        int copy_w = (img_w < 240) ? img_w : 240;
-        int copy_h = (img_h < 240) ? img_h : 240;
+        int copy_w = (img_w < eye_fb_w) ? img_w : eye_fb_w;
+        int copy_h = (img_h < eye_fb_h) ? img_h : eye_fb_h;
         for (int row = 0; row < copy_h; row++) {
             int dst_row = off_y + row;
-            if (dst_row >= 240) break;
+            if (dst_row >= eye_fb_h) break;
             for (int col = 0; col < copy_w; col++) {
                 int dst_col = off_x + col;
-                if (dst_col >= 240) break;
-                eye_fb[dst_row * 240 + dst_col] = src[row * img_w + col];
+                if (dst_col >= eye_fb_w) break;
+                eye_fb[dst_row * eye_fb_w + dst_col] = src[row * img_w + col];
             }
         }
         fbFlush();
@@ -794,10 +832,35 @@ static bool LinkShowJpegFile(const char *path) {
 
 #endif // CAM_SD_ENABLED
 
+// URL-decode in-place: %XX → byte. Handles '+', '%', and literal chars.
+// Returns strlen of decoded result.
+static size_t urlDecode(char *dst, const char *src) {
+    char *start = dst;
+    while (*src) {
+        if (*src == '%' && isxdigit((unsigned char)src[1]) && isxdigit((unsigned char)src[2])) {
+            char hex[3] = { src[1], src[2], '\0' };
+            *dst++ = (char)strtol(hex, nullptr, 16);
+            src += 3;
+        } else if (*src == '+') {
+            *dst++ = ' ';
+            src++;
+        } else {
+            *dst++ = *src++;
+        }
+    }
+    *dst = '\0';
+    return (size_t)(dst - start);
+}
+
+// Forward declarations for WiFi functions (defined later)
+static void saveWifiCreds(const char *ssid, const char *password);
+static bool reconnectWiFi(const char *ssid, const char *password, int timeout_ms);
+
 // Command handlers
 static void linkCmdStatus();
 static void linkCmdEyes(const char *arg);
 static void linkCmdAbort();
+static void linkCmdWifiCreds(const char *arg1, const char *arg2);
 #if CAM_SD_ENABLED
 static void linkCmdPhoto();
 static void linkCmdRec(const char *arg);
@@ -852,6 +915,10 @@ static void linkHandleLine(char *line) {
 #endif
         return;
     }
+    if (strcmp(verb, "WIFI_CREDS") == 0) {
+        linkCmdWifiCreds(arg1, arg2);
+        return;
+    }
     linkSend("ERR UNKNOWN_CMD");
 }
 
@@ -887,6 +954,35 @@ static void linkCmdEyes(const char *arg) {
 static void linkCmdAbort() {
     if (link_state != LINK_IDLE) linkAbortFlow();
     linkSend("OK ABORT");
+}
+
+static void linkCmdWifiCreds(const char *arg1, const char *arg2) {
+    if (!arg1 || !arg2) { linkSend("ERR BAD_ARG"); return; }
+
+    char ssid[33], password[65];
+    urlDecode(ssid, arg1);
+    urlDecode(password, arg2);
+
+    if (strlen(ssid) == 0) { linkSend("ERR BAD_ARG"); return; }
+
+    // Save to NVS for next boot
+    saveWifiCreds(ssid, password);
+
+    // Reconnect to the new AP
+    bool ok = reconnectWiFi(ssid, password, 15000);
+    if (!ok) {
+        linkSend("ERR WIFI AUTH_FAIL");
+        return;
+    }
+
+    // Get IP and return it
+    esp_netif_ip_info_t ip_info;
+    char ip_str[16] = "0.0.0.0";
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+        snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+    }
+    linkSend("OK WIFI %s", ip_str);
 }
 
 #if CAM_SD_ENABLED
@@ -1455,6 +1551,72 @@ static bool initCamera() {
 static EventGroupHandle_t wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 
+// NVS keys match the main controller's SsidManager format.
+#define WIFI_NVS_NS  "wifi"
+#define WIFI_NVS_SSID  "ssid"
+#define WIFI_NVS_PASS  "password"
+static char g_wifi_ssid[33] = {0};
+static char g_wifi_password[65] = {0};
+static bool g_wifi_creds_loaded = false;
+
+static void saveWifiCreds(const char *ssid, const char *password) {
+    nvs_handle_t handle;
+    if (nvs_open(WIFI_NVS_NS, NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_str(handle, WIFI_NVS_SSID, ssid);
+    nvs_set_str(handle, WIFI_NVS_PASS, password);
+    nvs_commit(handle);
+    nvs_close(handle);
+    strncpy(g_wifi_ssid, ssid, sizeof(g_wifi_ssid) - 1);
+    strncpy(g_wifi_password, password, sizeof(g_wifi_password) - 1);
+    g_wifi_creds_loaded = true;
+    ESP_LOGI(TAG, "WiFi creds saved: %s", ssid);
+}
+
+static bool loadWifiCreds(char *ssid_out, size_t ssid_sz,
+                          char *pass_out, size_t pass_sz) {
+    nvs_handle_t handle;
+    if (nvs_open(WIFI_NVS_NS, NVS_READONLY, &handle) != ESP_OK) return false;
+    size_t len = ssid_sz;
+    esp_err_t err = nvs_get_str(handle, WIFI_NVS_SSID, ssid_out, &len);
+    if (err != ESP_OK) { nvs_close(handle); return false; }
+    len = pass_sz;
+    err = nvs_get_str(handle, WIFI_NVS_PASS, pass_out, &len);
+    nvs_close(handle);
+    if (err != ESP_OK) return false;
+    g_wifi_creds_loaded = true;
+    return true;
+}
+
+// Reconnect to a new AP at runtime (WiFi already started).
+// Returns true when IP is obtained within timeout_ms.
+static bool reconnectWiFi(const char *ssid, const char *password, int timeout_ms) {
+    // Clear the connected bit so we can wait on it fresh
+    xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
+
+    wifi_config_t cfg = {};
+    strncpy((char *)cfg.sta.ssid, ssid, sizeof(cfg.sta.ssid) - 1);
+    strncpy((char *)cfg.sta.password, password, sizeof(cfg.sta.password) - 1);
+
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi set_config failed: %s", esp_err_to_name(err));
+        return false;
+    }
+    err = esp_wifi_disconnect();
+    // Ignore error if not currently connected
+    vTaskDelay(pdMS_TO_TICKS(500));
+    err = esp_wifi_connect();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi connect failed: %s", esp_err_to_name(err));
+        return false;
+    }
+    ESP_LOGI(TAG, "Reconnecting to Wi-Fi: %s", ssid);
+
+    EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT,
+                                           pdTRUE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
+    return (bits & WIFI_CONNECTED_BIT) != 0;
+}
+
 static void wifiEventHandler(void *arg, esp_event_base_t event_base,
                               int32_t event_id, void *event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
@@ -1473,7 +1635,14 @@ static bool connectWiFi(const char *ssid, const char *password, int timeout_ms) 
     strncpy((char *)cfg.sta.ssid, ssid, sizeof(cfg.sta.ssid) - 1);
     strncpy((char *)cfg.sta.password, password, sizeof(cfg.sta.password) - 1);
 
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &cfg);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "WiFi set_config busy — will retry after current connection settles");
+        // STA may already be connecting; just wait for the result
+        EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT,
+                                                pdFALSE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
+        return (bits & WIFI_CONNECTED_BIT) != 0;
+    }
     ESP_LOGI(TAG, "Connecting to Wi-Fi: %s", ssid);
 
     EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT,
@@ -1558,27 +1727,39 @@ extern "C" void app_main() {
         while (true) { camLinkLoop(); vTaskDelay(pdMS_TO_TICKS(10)); }
     }
 
-    // SD card
+    // SD card — skipped: SD_CS (GPIO2) conflicts with EYE_L_CS (GPIO2).
+    // The two SPI buses (SPI2 for SD, SPI3 for eyes) can't share the same
+    // CS pin because spi_bus_initialize puts the pin in peripheral mode.
 #if CAM_SD_ENABLED
-    sd_ready = initSd();
+    // sd_ready = initSd();  // disabled — would reconfigure GPIO2 and break eyes
+    sd_ready = false;
 #endif
+
+    // HTTP server up early (binds 0.0.0.0, serves as soon as IP is available)
+    startStreamServer();
 
     // Wi-Fi
     esp_wifi_start();
     bool connected = false;
-    if (strlen(CAM_WIFI_SSID) > 0) {
+
+    // Try NVS credentials first (synced from main controller over UART)
+    char nvs_ssid[33], nvs_pass[65];
+    if (loadWifiCreds(nvs_ssid, sizeof(nvs_ssid), nvs_pass, sizeof(nvs_pass))) {
+        ESP_LOGI(TAG, "Trying saved WiFi: %s", nvs_ssid);
+        connected = reconnectWiFi(nvs_ssid, nvs_pass, 15000);
+    }
+
+    // Fall back to compile-time credentials
+    if (!connected && strlen(CAM_WIFI_SSID) > 0) {
         connected = connectWiFi(CAM_WIFI_SSID, CAM_WIFI_PASSWORD, 15000);
     }
     if (!connected) {
         connected = connectWiFi(WALLE_AP_SSID, WALLE_AP_PASSWORD, 15000);
     }
     if (!connected) {
-        ESP_LOGW(TAG, "Wi-Fi connection failed - restarting in 10s");
-        vTaskDelay(pdMS_TO_TICKS(10000));
-        esp_restart();
+        ESP_LOGW(TAG, "Wi-Fi not connected - waiting for credentials over UART");
+        // Don't reboot — the main controller will push credentials via WIFI_CREDS
     }
-
-    startStreamServer();
 
     // Main loop
     while (true) {

@@ -43,6 +43,10 @@ public:
     /// True while the UART link to the CAM module is considered up.
     bool IsOnline() const { return online_.load(); }
 
+    /// The CAM module's current IP address ("" when unknown).
+    /// Updated after HELLO/STATUS and WIFI_CREDS responses.
+    std::string GetCamIp() const { return cam_ip_; }
+
     /// True while the CAM module is recording (REC START .. REC STOP /
     /// EVT REC_DONE).
     bool IsRecording() const { return recording_.load(); }
@@ -94,6 +98,11 @@ public:
     /// ABORT: cancel an in-progress capture flow / replay. UART only.
     bool Abort();
 
+    /// Sync WiFi credentials (SSID + password) to the CAM module so it can
+    /// connect to the same network. Uses SsidManager to read saved creds.
+    /// Returns true on success (CAM replied OK WIFI <ip>).
+    bool SyncWifi();
+
 private:
     WalleCamLink() = default;
     WalleCamLink(const WalleCamLink&) = delete;
@@ -124,6 +133,7 @@ private:
     std::atomic<bool> hello_pending_{false};
     std::atomic<int> consecutive_timeouts_{0};
     char last_error_[32] = {0};                 // written under cmd_mutex_
+    std::string cam_ip_;                        // updated after STATUS / WIFI responses
     SemaphoreHandle_t cmd_mutex_ = nullptr;     // serialises §8 in-flight commands
     QueueHandle_t line_queue_ = nullptr;        // response lines (RX -> Command)
     TaskHandle_t health_task_ = nullptr;        // notified by EVT BOOT

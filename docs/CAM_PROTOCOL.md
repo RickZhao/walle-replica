@@ -42,6 +42,7 @@
 | `SHOW` | `<path>` / `LATEST` | `OK SHOW <path>` / `ERR NOENT` | 眼屏回放指定/最新照片（默认 5s 后恢复表情；仅照片，录像回放留 v2） |
 | `ABORT` | — | `OK ABORT` | 中止进行中的拍照流程或回放，恢复表情 |
 | `LIST` | `photos [max]` | 多行块：`OK BEGIN <n>` → n 行 `F <path> <size>` → `OK END` | 调试/文件浏览（可选实现） |
+| `WIFI_CREDS` | `<url_encoded_ssid> <url_encoded_password>` | `OK WIFI <ip>` / `ERR WIFI <code>` | 主控推送 WiFi 凭证（见 §4.2） |
 
 ## 4. PHOTO 拍照流程（CAM 侧状态机）
 
@@ -59,6 +60,32 @@
 - 主控 `PHOTO` 响应超时：**8s**（覆盖准备+倒计时+拍摄）。
 - 回放期间收到 `ABORT` 或任意 `EYES` → 立即中断回放并恢复表情。
 - 主控侧时序：发 `PHOTO` 后由 MCP 工具返回值引导 LLM 口播"3、2、1，茄子"（语音与屏显倒计时近似同步即可，无需精确对齐）。
+
+### 4.2 WIFI_CREDS WiFi 凭证同步（2026-08-09 新增）
+
+主控连上 WiFi 后自动将当前 SSID/密码推送给 CAM，CAM 存入 NVS 并联网。双方共享同一 WiFi 后，MJPEG 推流和 HTTP 回退 API 可通过局域网直连。
+
+**同步时机**：
+1. CAM 上电 → 发 `EVT BOOT` → 主控 `HELLO` 握手完成后推送
+2. 主控端重新配网（用户修改 WiFi）→ 连接成功后推送
+3. CAM 重启后从 NVS 读取上次保存的凭证自动连接，无需等待推送
+
+**命令格式**：
+```
+>> WIFI_CREDS <url_encoded_ssid> <url_encoded_password>
+<< OK WIFI <ip_address>
+<< ERR WIFI AUTH_FAIL  (连接失败)
+<< ERR BAD_ARG          (参数缺失/SSID为空)
+```
+
+- SSID 和密码分别做 URL-encode（空格 → `%20`、特殊字符 → `%XX`），避免行内空格截断
+- CAM 收到后：存入 NVS → 断开当前 WiFi → 连接新 AP → 返回 IP
+- 响应超时：**15s**（覆盖断开+重连流程）
+
+**CAM 侧 NVS 存储**：
+- namespace `"wifi"`，keys `"ssid"` / `"password"`（与主控 `SsidManager` 命名一致）
+- 上电时优先从 NVS 加载凭证连接，无凭证则等待 UART 推送
+- **不再因 WiFi 连接失败而重启**——等待主控推送正确凭证
 
 ## 5. 异步事件（CAM → 主控）
 
@@ -81,6 +108,7 @@
 | `NOENT` | SHOW 指定路径不存在 / 无照片 |
 | `STATE` | 状态不允许的操作（如未录像收到 `REC STOP`、录像中重复 `REC START`） |
 | `IO` | 摄像头/传感器故障 |
+| `WIFI` | WiFi 操作失败（认证失败/超时等，后跟原因如 `AUTH_FAIL`） |
 
 ## 7. 超时与重试
 
@@ -91,6 +119,7 @@
 | `REC START` | 1s | 1 次 |
 | `REC STOP` | 2s（flush AVI 索引） | **不重试** |
 | `PHOTO` | 8s | **不重试**（防重复拍摄） |
+| `WIFI_CREDS` | 15s | 1 次 |
 
 - 超时计一次链路故障；连续 3 次判链路 down，主控回退 HTTP 调用，并周期性 `PING` 探测恢复。
 

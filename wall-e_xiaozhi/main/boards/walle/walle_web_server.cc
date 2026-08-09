@@ -80,18 +80,27 @@ input[type=range]{flex:1}
 <button id="auto" onclick="toggleAuto()">Auto mode: ?</button>
 
 <script>
-// ESP32-S3-CAM MJPEG stream (wall-e_esp32_cam/);
-// fill in the cam module's address, e.g. "http://192.168.1.50/stream".
-// Leave empty to hide the camera area.
-const stream_url = "";
-if (stream_url) {
-  document.getElementById('cam').src = stream_url;
-} else {
-  document.getElementById('cam').style.display = 'none';
+// ESP32-S3-CAM MJPEG stream — fetched dynamically from the main controller
+// which tracks the CAM's IP via the UART link.
+let stream_url = "";
+let camapi = "";
+function initCamera() {
+  fetch('/api/cam_url').then(r=>r.json()).then(j=>{
+    if (j.stream_url) {
+      stream_url = j.stream_url;
+      camapi = new URL(stream_url).origin;
+      document.getElementById('cam').src = stream_url;
+      document.getElementById('camctl').style.display = 'block';
+    } else {
+      document.getElementById('cam').style.display = 'none';
+      camMsg('CAM offline — waiting for UART link');
+    }
+  }).catch(()=>{
+    document.getElementById('cam').style.display = 'none';
+    camMsg('CAM unreachable');
+  });
 }
-// Camera module SD API (photo / record / files) - same origin as the stream
-const camapi = stream_url ? new URL(stream_url).origin : "";
-if (camapi) document.getElementById('camctl').style.display = 'block';
+initCamera();
 let recording = false;
 function camMsg(t){document.getElementById('cammsg').textContent=t;}
 function camPhoto(){camMsg('capturing...');
@@ -305,6 +314,17 @@ static esp_err_t GamepadStatusHandler(httpd_req_t* req) {
     return SendJson(req, "{\"status\":\"OK\",\"enabled\":false,\"active\":false,\"connected\":false}");
 }
 
+static esp_err_t CamUrlHandler(httpd_req_t* req) {
+    auto& cam = WalleCamLink::GetInstance();
+    std::string ip = cam.GetCamIp();
+    if (ip.empty()) {
+        return SendJson(req, "{\"stream_url\":\"\"}");
+    }
+    char buf[128];
+    snprintf(buf, sizeof(buf), "{\"stream_url\":\"http://%s/stream\"}", ip.c_str());
+    return SendJson(req, buf);
+}
+
 static esp_err_t CamViewHandler(httpd_req_t* req) {
     std::string body = ReadBody(req);
     char action[16];
@@ -362,6 +382,7 @@ esp_err_t WalleWebServerStart() {
         { .uri = "/arduinoStatus",  .method = HTTP_POST, .handler = ArduinoStatusHandler, .user_ctx = nullptr },
         { .uri = "/gamepadStatus",  .method = HTTP_GET,  .handler = GamepadStatusHandler, .user_ctx = nullptr },
         { .uri = "/gamepadStatus",  .method = HTTP_POST, .handler = GamepadStatusHandler, .user_ctx = nullptr },
+        { .uri = "/api/cam_url",    .method = HTTP_GET,  .handler = CamUrlHandler,        .user_ctx = nullptr },
         { .uri = "/camview",        .method = HTTP_POST, .handler = CamViewHandler,       .user_ctx = nullptr },
     };
     for (const auto& route : routes) {

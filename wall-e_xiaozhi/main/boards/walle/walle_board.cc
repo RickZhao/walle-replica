@@ -28,6 +28,7 @@
 #include "led/single_led.h"
 #include "assets/lang_config.h"
 #include "walle_motion.h"
+#include "walle_cam_link.h"
 #include "walle_status_display.h"
 #include "walle_web_server.h"
 #include "walle_cam_link.h"
@@ -194,8 +195,8 @@ public:
 #endif
 
 #if WEB_SERVER_ENABLED
-        // HTTP control panel (API-compatible with the Pi Flask version)
-        WalleWebServerStart();
+        // HTTP control panel: deferred to network-connect event
+        // (lwIP TCP/IP stack is not yet initialised in the constructor).
 #endif
     }
 
@@ -223,6 +224,13 @@ public:
                 ESP_LOGW(TAG, "Wi-Fi connect timeout, falling back to 4G");
                 SwitchNetworkType();  // saves ML307 as default and reboots
                 return;
+            }
+#endif
+#if WEB_SERVER_ENABLED
+            if (event == NetworkEvent::Connected) {
+                WalleWebServerStart();
+                // Push WiFi credentials to CAM module so it can join the same network
+                WalleCamLink::GetInstance().SyncWifi();
             }
 #endif
             if (app_callback_) {
