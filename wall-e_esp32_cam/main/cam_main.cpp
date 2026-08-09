@@ -67,7 +67,7 @@ static const char *TAG = "cam";
 #define WALLE_AP_PASSWORD  "walle1234"
 
 #define CAM_FRAME_SIZE     FRAMESIZE_VGA
-#define CAM_JPEG_QUALITY   12
+#define CAM_JPEG_QUALITY   25  // 0=best/largest; higher=smaller frame → less DMA load (was 12, FB-OVF)
 
 #define CAM_SD_ENABLED     1   // SD code compiled but init skipped (GPIO2 conflict with EYE_L_CS)
 #define SD_CS_PIN          2
@@ -861,6 +861,7 @@ static void linkCmdStatus();
 static void linkCmdEyes(const char *arg);
 static void linkCmdAbort();
 static void linkCmdWifiCreds(const char *arg1, const char *arg2);
+static void linkCmdPreview();
 #if CAM_SD_ENABLED
 static void linkCmdPhoto();
 static void linkCmdRec(const char *arg);
@@ -917,6 +918,10 @@ static void linkHandleLine(char *line) {
     }
     if (strcmp(verb, "WIFI_CREDS") == 0) {
         linkCmdWifiCreds(arg1, arg2);
+        return;
+    }
+    if (strcmp(verb, "PREVIEW") == 0) {
+        linkCmdPreview();
         return;
     }
     linkSend("ERR UNKNOWN_CMD");
@@ -983,6 +988,63 @@ static void linkCmdWifiCreds(const char *arg1, const char *arg2) {
         snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
     }
     linkSend("OK WIFI %s", ip_str);
+}
+
+// Live camera preview on eye displays — no SD card needed.
+static void linkCmdPreview() {
+    if (link_state != LINK_IDLE) { linkSend("ERR BUSY"); return; }
+
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) { linkSend("ERR IO"); return; }
+
+#if EYE_DISPLAYS_ENABLED
+    // Decode JPEG to framebuffer
+    jpeg_dec_config_t cfg = DEFAULT_JPEG_DEC_CONFIG();
+    cfg.output_type = JPEG_PIXEL_FORMAT_RGB565_LE;
+    jpeg_dec_handle_t dec = nullptr;
+    if (jpeg_dec_open(&cfg, &dec) == JPEG_ERR_OK) {
+        jpeg_dec_io_t io = {};
+        io.inbuf = fb->buf;
+        io.inbuf_len = fb->len;
+        jpeg_dec_header_info_t info;
+        if (jpeg_dec_parse_header(dec, &io, &info) == JPEG_ERR_OK) {
+            int out_size = 0;
+            jpeg_dec_get_outbuf_len(dec, &out_size);
+            uint8_t *outbuf = (uint8_t *)heap_caps_malloc(out_size, MALLOC_CAP_SPIRAM);
+            if (outbuf) {
+                io.outbuf = outbuf;
+                io.out_size = out_size;
+                if (jpeg_dec_process(dec, &io) == JPEG_ERR_OK) {
+                    uint16_t *src = (uint16_t *)outbuf;
+                    int img_w = info.width, img_h = info.height;
+                    int off_x = (img_w < eye_fb_w) ? (eye_fb_w - img_w) / 2 : 0;
+                    int off_y = (img_h < eye_fb_h) ? (eye_fb_h - img_h) / 2 : 0;
+                    int copy_w = (img_w < eye_fb_w) ? img_w : eye_fb_w;
+                    int copy_h = (img_h < eye_fb_h) ? img_h : eye_fb_h;
+                    eyeDisplayFillScreen(COL_BLACK);
+                    for (int row = 0; row < copy_h; row++) {
+                        int dst_row = off_y + row;
+                        if (dst_row >= eye_fb_h) break;
+                        for (int col = 0; col < copy_w; col++) {
+                            int dst_col = off_x + col;
+                            if (dst_col >= eye_fb_w) break;
+                            eye_fb[dst_row * eye_fb_w + dst_col] = src[row * img_w + col];
+                        }
+                    }
+                    fbFlush();
+                }
+                free(outbuf);
+            }
+        }
+        jpeg_dec_close(dec);
+    }
+#endif
+    esp_camera_fb_return(fb);
+
+    link_state = LINK_SHOW;
+    link_state_at = esp_timer_get_time();
+    link_saved_expr = eyeDisplayGetExpression();
+    linkSend("OK PREVIEW");
 }
 
 #if CAM_SD_ENABLED
@@ -1097,6 +1159,7 @@ static void camLinkInit() {
     uart_cfg.parity = UART_PARITY_DISABLE;
     uart_cfg.stop_bits = UART_STOP_BITS_1;
     uart_cfg.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+    uart_cfg.source_clk = UART_SCLK_DEFAULT;  // match main controller's clock source
     ESP_ERROR_CHECK(uart_driver_install(CAM_LINK_UART, 256, 0, 0, nullptr, 0));
     ESP_ERROR_CHECK(uart_param_config(CAM_LINK_UART, &uart_cfg));
     ESP_ERROR_CHECK(uart_set_pin(CAM_LINK_UART, CAM_LINK_TX_PIN, CAM_LINK_RX_PIN,
@@ -1105,6 +1168,7 @@ static void camLinkInit() {
     char buf[64];
     int len = snprintf(buf, sizeof(buf), "EVT BOOT %d\n", CAM_PROTO_VERSION);
     uart_write_bytes(CAM_LINK_UART, buf, len);
+    uart_wait_tx_done(CAM_LINK_UART, pdMS_TO_TICKS(100));  // ensure BOOT reaches main before camera init
     ESP_LOGI(TAG, "Cam link: UART%d 115200 RX=%d TX=%d, protocol v%d, fw %s",
              CAM_LINK_UART, CAM_LINK_RX_PIN, CAM_LINK_TX_PIN, CAM_PROTO_VERSION, CAM_FW_VERSION);
 }
@@ -1527,11 +1591,11 @@ static bool initCamera() {
     config.pin_sccb_scl = SIOC_GPIO_NUM;
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 20000000;
+    config.xclk_freq_hz = 10000000;  // 10 MHz — lower PCLK to reduce DMA pressure (was 20 MHz)
     config.pixel_format = PIXFORMAT_JPEG;
     config.frame_size = CAM_FRAME_SIZE;
     config.jpeg_quality = CAM_JPEG_QUALITY;
-    config.fb_count = 2;
+    config.fb_count = 3;  // triple buffering — more headroom when WiFi contends for PSRAM
     config.fb_location = CAMERA_FB_IN_PSRAM;
     config.grab_mode = CAMERA_GRAB_LATEST;
     config.sccb_i2c_port = 0;
@@ -1593,6 +1657,11 @@ static bool reconnectWiFi(const char *ssid, const char *password, int timeout_ms
     // Clear the connected bit so we can wait on it fresh
     xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
 
+    // Disconnect first — ESP-IDF may already be auto-connecting to a stale AP,
+    // and esp_wifi_set_config() fails with ESP_ERR_WIFI_STATE while connecting.
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(300));
+
     wifi_config_t cfg = {};
     strncpy((char *)cfg.sta.ssid, ssid, sizeof(cfg.sta.ssid) - 1);
     strncpy((char *)cfg.sta.password, password, sizeof(cfg.sta.password) - 1);
@@ -1602,9 +1671,6 @@ static bool reconnectWiFi(const char *ssid, const char *password, int timeout_ms
         ESP_LOGE(TAG, "WiFi set_config failed: %s", esp_err_to_name(err));
         return false;
     }
-    err = esp_wifi_disconnect();
-    // Ignore error if not currently connected
-    vTaskDelay(pdMS_TO_TICKS(500));
     err = esp_wifi_connect();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi connect failed: %s", esp_err_to_name(err));
@@ -1622,7 +1688,10 @@ static void wifiEventHandler(void *arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t *evt = (wifi_event_sta_disconnected_t *)event_data;
+        ESP_LOGW(TAG, "Wi-Fi disconnected (reason=%d), reconnecting...", evt->reason);
         xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        esp_wifi_connect();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *evt = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Wi-Fi connected, IP: " IPSTR, IP2STR(&evt->ip_info.ip));
@@ -1658,6 +1727,8 @@ static void startStreamServer() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
     config.max_uri_handlers = 10;
+    config.send_wait_timeout = 3;   // 3s timeout: don't block forever when client stops reading
+    config.recv_wait_timeout = 3;
 
     httpd_handle_t server = nullptr;
     if (httpd_start(&server, &config) != ESP_OK) {
@@ -1740,6 +1811,7 @@ extern "C" void app_main() {
 
     // Wi-Fi
     esp_wifi_start();
+    esp_wifi_set_ps(WIFI_PS_NONE);  // Disable power save — MJPEG streaming can't tolerate radio sleep
     bool connected = false;
 
     // Try NVS credentials first (synced from main controller over UART)
