@@ -1658,6 +1658,7 @@ static EventGroupHandle_t wifi_event_group;
 static char g_wifi_ssid[33] = {0};
 static char g_wifi_password[65] = {0};
 static bool g_wifi_creds_loaded = false;
+static bool g_wifi_auto_reconnect = true;  // disabled during initial setup to prevent race
 
 static void saveWifiCreds(const char *ssid, const char *password) {
     nvs_handle_t handle;
@@ -1693,8 +1694,10 @@ static bool reconnectWiFi(const char *ssid, const char *password, int timeout_ms
     // Clear the connected bit so we can wait on it fresh
     xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
 
-    // Disconnect first — ESP-IDF may already be auto-connecting to a stale AP,
-    // and esp_wifi_set_config() fails with ESP_ERR_WIFI_STATE while connecting.
+    // Prevent the event handler from auto-reconnecting while we change config.
+    // Otherwise the disconnect event triggers an immediate esp_wifi_connect()
+    // and esp_wifi_set_config() fails with ESP_ERR_WIFI_STATE.
+    g_wifi_auto_reconnect = false;
     esp_wifi_disconnect();
     vTaskDelay(pdMS_TO_TICKS(300));
 
@@ -1705,17 +1708,20 @@ static bool reconnectWiFi(const char *ssid, const char *password, int timeout_ms
     esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi set_config failed: %s", esp_err_to_name(err));
+        g_wifi_auto_reconnect = true;
         return false;
     }
     err = esp_wifi_connect();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi connect failed: %s", esp_err_to_name(err));
+        g_wifi_auto_reconnect = true;
         return false;
     }
     ESP_LOGI(TAG, "Reconnecting to Wi-Fi: %s", ssid);
 
     EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT,
                                            pdTRUE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
+    g_wifi_auto_reconnect = true;
     return (bits & WIFI_CONNECTED_BIT) != 0;
 }
 
@@ -1725,13 +1731,15 @@ static void wifiEventHandler(void *arg, esp_event_base_t event_base,
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t *evt = (wifi_event_sta_disconnected_t *)event_data;
-        ESP_LOGW(TAG, "Wi-Fi disconnected (reason=%d), reconnecting...", evt->reason);
+        ESP_LOGW(TAG, "Wi-Fi disconnected (reason=%d)%s", evt->reason,
+                 g_wifi_auto_reconnect ? ", reconnecting..." : "");
         xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
-        esp_wifi_connect();
+        if (g_wifi_auto_reconnect) esp_wifi_connect();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *evt = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Wi-Fi connected, IP: " IPSTR, IP2STR(&evt->ip_info.ip));
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        g_wifi_auto_reconnect = true;  // safety: ensure reconnects are re-enabled after success
     }
 }
 
@@ -1795,6 +1803,47 @@ static void startStreamServer() {
     ESP_LOGI(TAG, "Camera stream server started on port 80");
 }
 
+#if FACE_DETECT_ENABLED
+/// Face detection task — runs on Core 1 to avoid competing with MJPEG
+/// streaming, WiFi and UART protocol handling on Core 0.
+static void faceDetectTask(void* arg) {
+    int64_t last_detect_us = 0;
+    uint8_t* jpeg_copy = nullptr;
+    size_t   jpeg_cap = 0;
+
+    while (true) {
+        int64_t now = esp_timer_get_time();
+        if (now - last_detect_us < 200000LL) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        camera_fb_t* fb = esp_camera_fb_get();
+        if (!fb) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        // Copy JPEG out of the framebuffer, return it immediately
+        if (!jpeg_copy || fb->len > jpeg_cap) {
+            free(jpeg_copy);
+            jpeg_cap = fb->len + 1024;
+            jpeg_copy = (uint8_t*)heap_caps_malloc(jpeg_cap,
+                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        }
+        if (jpeg_copy) {
+            memcpy(jpeg_copy, fb->buf, fb->len);
+            size_t len = fb->len;
+            esp_camera_fb_return(fb);
+            face_detect_process(jpeg_copy, len);
+        } else {
+            esp_camera_fb_return(fb);
+        }
+        last_detect_us = now;
+    }
+}
+#endif
+
 // ====================================================================
 // Main
 // ====================================================================
@@ -1850,6 +1899,7 @@ extern "C" void app_main() {
     startStreamServer();
 
     // Wi-Fi
+    g_wifi_auto_reconnect = false;  // prevent auto-connect with stale NVS creds
     esp_wifi_start();
     esp_wifi_set_ps(WIFI_PS_NONE);  // Disable power save — MJPEG streaming can't tolerate radio sleep
     bool connected = false;
@@ -1877,42 +1927,17 @@ extern "C" void app_main() {
     // to HELLO immediately when the main controller receives EVT BOOT.
     camLinkInit();
 
-    // Main loop
 #if FACE_DETECT_ENABLED
-    int64_t last_detect_us = 0;
+    // Run face detection on Core 1 so it doesn't compete with MJPEG
+    // streaming and WiFi on Core 0.
+    xTaskCreatePinnedToCore(faceDetectTask, "face_detect", 6144,
+                            nullptr, 3, nullptr, 1);
 #endif
+
+    // Main loop
     while (true) {
         eyeDisplayLoop();
         camLinkLoop();
-
-#if FACE_DETECT_ENABLED
-        // Face detection: copy JPEG then return frame immediately so the
-        // MJPEG stream handler isn't starved during model inference.
-        static uint8_t* s_jpeg_copy = nullptr;
-        static size_t   s_jpeg_cap = 0;
-        int64_t now = esp_timer_get_time();
-        if (now - last_detect_us > 200000LL) {  // 200ms
-            camera_fb_t* fb = esp_camera_fb_get();
-            if (fb) {
-                if (!s_jpeg_copy || fb->len > s_jpeg_cap) {
-                    free(s_jpeg_copy);
-                    s_jpeg_cap = fb->len + 1024;
-                    s_jpeg_copy = (uint8_t*)heap_caps_malloc(s_jpeg_cap,
-                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-                }
-                if (s_jpeg_copy) {
-                    memcpy(s_jpeg_copy, fb->buf, fb->len);
-                    size_t len = fb->len;
-                    esp_camera_fb_return(fb);           // release frame immediately
-                    face_detect_process(s_jpeg_copy, len);  // detect on copy
-                } else {
-                    esp_camera_fb_return(fb);
-                }
-                last_detect_us = now;
-            }
-        }
-#endif
-
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
