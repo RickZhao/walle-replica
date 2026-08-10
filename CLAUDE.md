@@ -8,10 +8,12 @@ Wall-E 机器人复刻版的控制仓库，包含多套固件与一套树莓派 
 
 1. **Arduino 固件** (`archive/arduino-pi/wall-e/`)：原始方案，控制电机与舵机，通过 USB 串口接收指令（Arduino UNO + 树莓派）。
 2. **Raspberry Pi Web 服务器** (`archive/arduino-pi/web_interface/`)：基于 Flask 的 Web 控制界面，通过串口向 Arduino 下发指令，并可选地接入 Pi 摄像头进行 MJPEG 视频推流。
-3. **小智语音固件** (`wall-e_xiaozhi/`)：**当前主线**。单块 ESP32-S3 运行 vendored 小智 ESP-IDF 固件（上游 78/xiaozhi-esp32 @ e0074e9），板型代码在 `main/boards/walle/`：唤醒词 + 云端 LLM + MCP 动作工具 + 运动核心 + ST7789 状态屏（眼睛屏在 CAM 模组上，主控侧禁用）+ Web 控制面板（:80，API 兼容 Flask 版）+ Wi-Fi/4G 双网（Wi-Fi 优先，超时自动回退 ML307A 4G；USB 串口协议默认禁用——GPIO19/20 原生 USB 被 PWMA/舵机 I2C 占用）。迁移细节见 `docs/XIAOZHI_MIGRATION.md`。
+3. **小智语音固件** (`wall-e_xiaozhi/`)：**当前主线**。单块 ESP32-S3 运行 vendored 小智 ESP-IDF 固件（上游 78/xiaozhi-esp32 @ e0074e9），板型代码在 `main/boards/walle/`：唤醒词 + 云端 LLM + MCP 动作工具 + 运动核心 + ST7789 状态屏（眼睛屏在 CAM 模组上，主控侧禁用）+ Web 控制面板（:80，API 兼容 Flask 版）+ Wi-Fi/4G 双网（Wi-Fi 优先，超时自动回退 ML307R-DL 4G（mini 核心板，GPIO2/3 经 J-4G 线束接入，吃 5V）；USB 串口协议默认禁用——GPIO19/20 原生 USB 被 PWMA/舵机 I2C 占用）。迁移细节见 `docs/XIAOZHI_MIGRATION.md`。
 4. **ESP32-S3-CAM 推流固件** (`wall-e_esp32_cam/`)：第二块摄像板的 MJPEG 推流 + microSD 拍照录像 + **眼睛屏驱动**（2× 圆屏共享 SPI，`/eyes?expr=` 表情端点）。与主控经 UART 交互（CAM_PROTOCOL v1，见 `docs/CAM_PROTOCOL.md`）。
 
 硬件接线、舵机标定、电池检测等说明详见 `README.md`（另有中文版 `README.zh-CN.md`）。`docs/` 下有八份中文文档：`docs/WIRING.md`（Arduino<->舵机板/电机板接线）、`docs/SERIAL_PROTOCOL.md`（串口通信协议，见下方「串口指令协议」）、`docs/HARDWARE.md`（硬件采购清单）、`docs/XIAOZHI_MIGRATION.md`（小智语音迁移：构建、引脚、MCP 工具、Web 面板）、`docs/NEW_HARDWARE_MIGRATION.md`（新硬件方案迁移进度与待办）、`docs/CAM_PROTOCOL.md`（主控↔CAM UART 交互协议，已定稿且两侧固件已实现，待实机联调）、`docs/VOICE_LLM_PLAN.md`（树莓派侧语音大模型方案，备选）、`docs/REID_FOLLOW_PLAN.md`（视觉目标再识别/跟随方案，尚未实现）。
+
+> **新硬件 PCB 设计输入（自研方案 A：双层堆叠主板 + 摄像头背板 + 副板）** 见 `hardware/`：`另一套硬件方案.md`（第三方套件 BOM 转录）、`新硬件BOM与尺寸.md`（BOM 与模块实测尺寸）、`主板设计说明.md`（连接器逐脚定义 / 电源树 / 布局）、`主板布局示意图.html`（等比例布局图，含主板顶/底两面、摄像头背板、副板视图）；参考照片 `另一套硬件-{主板,副板,摄像头背板}.png`。
 
 > 更详尽的 AI 助手导览（完整仓库结构树、技术栈、构建部署步骤、测试策略）见根目录 `AGENTS.md`；本文档只保留高频使用的命令与跨文件架构要点。
 

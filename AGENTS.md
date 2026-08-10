@@ -62,12 +62,18 @@ walle-replica/
 │   ├── SERIAL_PROTOCOL.md       # 串口通信协议（必读）
 │   ├── WIRING.md                # Arduino 接线指南
 │   ├── HARDWARE.md              # 硬件采购清单
+│   ├── XIAOZHI_MIGRATION.md     # 小智语音迁移：构建、引脚、MCP 工具、Web 面板
+│   ├── NEW_HARDWARE_MIGRATION.md # 新硬件方案迁移进度与待办（Step 4.5 CAM 板型核对阻塞项）
+│   ├── CAM_PROTOCOL.md          # 主控↔CAM UART 交互协议（规范已定稿；两侧均已实现，待实机联调）
 │   ├── VOICE_LLM_PLAN.md        # 语音 + LLM 方案（树莓派侧备选，尚未实现）
-│   ├── REID_FOLLOW_PLAN.md      # Re-ID 视觉跟随方案（尚未实现）
-│   ├── CAM_PROTOCOL.md          # 主控↔CAM UART 交互协议（规范已定稿；主控侧 walle_cam_link 与 CAM 侧 cam_link.h 均已实现，待实机联调）
-│   └── XIAOZHI_MIGRATION.md     # 小智语音迁移：构建、引脚、MCP 工具、Web 面板
-├── hardware/                    # PCB 设计文件与第三方方案资料
-│   └── 另一套硬件方案.md         # 第三方 ESP32-S3 方案 BOM（由同名 xlsx 转录）
+│   └── REID_FOLLOW_PLAN.md      # Re-ID 视觉跟随方案（尚未实现）
+├── hardware/                    # 新硬件 PCB 设计输入 + 第三方方案资料
+│   ├── 另一套硬件方案.md         # 第三方 ESP32-S3 套件 BOM 转录与引脚表
+│   ├── 新硬件BOM与尺寸.md        # 新硬件 BOM + 模块实测尺寸（方案 A 设计输入）
+│   ├── 主板设计说明.md           # 方案 A 双层堆叠主板 + 摄像头背板 + 副板：连接器逐脚定义/电源树/布局
+│   ├── 主板布局示意图.html        # 等比例布局示意图（主板顶/底两面 + 摄像头背板 + 副板）
+│   ├── 另一套硬件-{主板,副板,摄像头背板}.png  # 第三方套件参考实物照片
+│   └── walle-shield/             # 旧 Arduino UNO 模块化底板（KiCad 10，140×100）
 ├── models/                      # 空目录；设计文档提到的 TFLite 模型尚未提交
 ├── images/                      # 接线图、电路图
 ├── README.md / README.zh-CN.md

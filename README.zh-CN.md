@@ -11,10 +11,10 @@ Wall-E 复刻版机器人的控制代码与控制器代码。关于该机器人�
 >
 > | 目录 | 框架 | 说明 |
 > |------|------|------|
-> | `wall-e_xiaozhi/` | ESP-IDF | **主线**：单块 ESP32-S3 语音机器人（小智方案：唤醒词 + 云端 LLM + MCP 动作工具 + Web 控制面板 + ML307A 4G 回退；眼睛屏在 CAM 模组上，主控侧禁用），详见 `docs/XIAOZHI_MIGRATION.md` |
+> | `wall-e_xiaozhi/` | ESP-IDF | **主线**：单块 ESP32-S3 语音机器人（小智方案：唤醒词 + 云端 LLM + MCP 动作工具 + Web 控制面板 + ML307R-DL 4G 回退（mini 核心板，GPIO2/3）；眼睛屏在 CAM 模组上，主控侧禁用），详见 `docs/XIAOZHI_MIGRATION.md` |
 > | `wall-e_esp32_cam/` | Arduino (ESP32-S3-CAM) | 第二块 ESP32-S3-CAM 的 MJPEG 推流固件 |
 > | `hardware/walle-shield/` | KiCad 10 | 模块化背板 PCB，替代杜邦线飞线 |
-> | `hardware/` | — | 第三方 ESP32-S3 方案 BOM 分析（`另一套硬件方案.md`） |
+> | `hardware/` | — | 新硬件 PCB 设计输入：`另一套硬件方案.md`（第三方套件 BOM）、`新硬件BOM与尺寸.md`（BOM/尺寸）、`主板设计说明.md`（连接器/电源/布局）、`主板布局示意图.html`（布局图，含摄像头背板与副板） |
 >
 > 下文的原始方案（Arduino UNO `archive/arduino-pi/wall-e/` + 树莓派 `archive/arduino-pi/web_interface/`）仍在维护。中文技术文档见 `docs/`（串口协议、接线、硬件清单、小智迁移记录等）。
 
@@ -71,6 +71,8 @@ Web 界面使用 Python 编写，基于 *Flask* 搭建服务器。树莓派通�
 > **使用 TB6612FNG 电机板**：上图默认对应 Arduino Motor Shield Rev2。若使用 TB6612FNG，请在 `wall-e.ino` 中取消注释 `#define MOTOR_DRIVER_TB6612FNG`，并用 D8/D9 作为第二路方向脚接 TB6612FNG 的 AIN2/BIN2，无需 74HC04 反相器。详细接线见 `docs/WIRING.md`。
 
 > **新增：模块化底板 PCB** — 仓库现在提供完整的 KiCad 10 底板设计：`hardware/walle-shield/`。用一块 140×100 mm 的双层板替代大量杜邦线，只需焊接排母、端子、开关、保险丝和几颗电阻，然后把 Arduino、TB6612FNG 模块、PCA9685 模块、降压模块直接插上即可。Gerber、钻孔文件、BOM 已导出。详见 `hardware/walle-shield/README.md`。
+
+> **新增：新硬件 PCB 设计输入（方案 A）** — 自研方案 A 双层堆叠主板 + 摄像头背板 + 副板的完整设计输入已就绪：`hardware/新硬件BOM与尺寸.md`（BOM/模块实测尺寸）、`hardware/主板设计说明.md`（连接器逐脚定义/电源树/布局）、`hardware/主板布局示意图.html`（等比例布局图）；以第三方套件为参考（`hardware/另一套硬件方案.md` + `另一套硬件-{主板,副板,摄像头背板}.png`）。
 
 <br />
 

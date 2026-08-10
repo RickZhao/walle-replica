@@ -11,10 +11,10 @@ Robot and controller code for a Wall-E replica robot. For more information about
 >
 > | Path | Framework | Description |
 > |------|-----------|-------------|
-> | `wall-e_xiaozhi/` | ESP-IDF | **Mainline**: single ESP32-S3 voice robot based on xiaozhi-esp32 (wake word + cloud LLM + MCP motion tools + web control panel + ML307A 4G fallback; eye display lives on the CAM module, disabled on the main MCU). See `docs/XIAOZHI_MIGRATION.md` |
+> | `wall-e_xiaozhi/` | ESP-IDF | **Mainline**: single ESP32-S3 voice robot based on xiaozhi-esp32 (wake word + cloud LLM + MCP motion tools + web control panel + ML307R-DL 4G fallback (mini core board, GPIO2/3); eye display lives on the CAM module, disabled on the main MCU). See `docs/XIAOZHI_MIGRATION.md` |
 > | `wall-e_esp32_cam/` | Arduino (ESP32-S3-CAM) | MJPEG camera streamer for a second ESP32-S3-CAM board |
 > | `hardware/walle-shield/` | KiCad 10 | Modular backplane PCB replacing dupont wiring |
-> | `hardware/` | — | Third-party ESP32-S3 BOM analysis (`另一套硬件方案.md`) |
+> | `hardware/` | — | New-hardware PCB design inputs: `另一套硬件方案.md` (third-party kit BOM), `新硬件BOM与尺寸.md` (BOM/sizes), `主板设计说明.md` (connectors/power/layout), `主板布局示意图.html` (layout incl. camera backplane & panel board) |
 >
 > The original Arduino UNO (`archive/arduino-pi/wall-e/`) + Raspberry Pi (`archive/arduino-pi/web_interface/`) setup below is still fully maintained. Chinese docs live in `docs/` (serial protocol, wiring, hardware list, migration notes).
 
@@ -69,6 +69,8 @@ The web interface is programmed in Python and uses *Flask* to generate a server.
 <br />
 
 > **New: Modular Backplane PCB** — A complete KiCad 10 backplane design is available in `hardware/walle-shield/`. It replaces the mess of dupont wires with a single 140×100 mm 2-layer board: solder the pin sockets/terminals/switch/fuse/resistors, then plug in the Arduino, TB6612FNG module, PCA9685 module and buck converter. Gerbers, drill files and BOM are already exported. See `hardware/walle-shield/README.md` for details.
+
+> **New: New-hardware PCB design inputs (Plan A)** — Complete design inputs for the custom Plan-A double-sided stacked mainboard + camera backplane + front-panel board are ready in `hardware/`: `新硬件BOM与尺寸.md` (BOM & measured module sizes), `主板设计说明.md` (pin-by-pin connector definitions / power tree / layout), `主板布局示意图.html` (to-scale layout incl. mainboard top/bottom, camera backplane and panel board); referencing the third-party kit (`另一套硬件方案.md` + `另一套硬件-{主板,副板,摄像头背板}.png`).
 <br />
 
 <br />
