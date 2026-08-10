@@ -31,6 +31,7 @@
 #include "walle_cam_link.h"
 #include "walle_status_display.h"
 #include "walle_web_server.h"
+#include "walle_face_tracker.h"
 #include "walle_cam_link.h"
 
 #include <esp_log.h>
@@ -184,6 +185,15 @@ public:
         // without a CAM module attached the link stays offline and all
         // camera actions fall back to HTTP.
         WalleCamLink::GetInstance().Start();
+#endif
+
+#if FACE_TRACK_ENABLED
+        // Wire EVT TRACK events from the CAM link into the face tracker.
+        WalleCamLink::GetInstance().SetTrackCallback(
+            [](const WalleCamLink::TrackEvent& evt) {
+                WalleFaceTracker::GetInstance().OnTrackEvent(evt);
+            });
+        WalleFaceTracker::GetInstance().Init();
 #endif
 
 #if STATUS_DISPLAY_ENABLED

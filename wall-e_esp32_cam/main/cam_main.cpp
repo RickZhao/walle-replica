@@ -54,6 +54,7 @@
 #include "esp_jpeg_dec.h"
 
 #include "camera_pins.h"
+#include "face_detect.h"
 
 static const char *TAG = "cam";
 
@@ -68,6 +69,8 @@ static const char *TAG = "cam";
 
 #define CAM_FRAME_SIZE     FRAMESIZE_VGA
 #define CAM_JPEG_QUALITY   25  // 0=best/largest; higher=smaller frame → less DMA load (was 12, FB-OVF)
+
+#define FACE_DETECT_ENABLED 1   // 1=face detect (JPEG decode only, no UART TX yet)
 
 #define CAM_SD_ENABLED     1   // SD code compiled but init skipped (GPIO2 conflict with EYE_L_CS)
 #define SD_CS_PIN          2
@@ -861,6 +864,8 @@ static void linkCmdStatus();
 static void linkCmdEyes(const char *arg);
 static void linkCmdAbort();
 static void linkCmdWifiCreds(const char *arg1, const char *arg2);
+static void linkCmdLock();
+static void linkCmdUnlock();
 static void linkCmdPreview();
 #if CAM_SD_ENABLED
 static void linkCmdPhoto();
@@ -922,6 +927,14 @@ static void linkHandleLine(char *line) {
     }
     if (strcmp(verb, "PREVIEW") == 0) {
         linkCmdPreview();
+        return;
+    }
+    if (strcmp(verb, "LOCK") == 0) {
+        linkCmdLock();
+        return;
+    }
+    if (strcmp(verb, "UNLOCK") == 0) {
+        linkCmdUnlock();
         return;
     }
     linkSend("ERR UNKNOWN_CMD");
@@ -988,6 +1001,29 @@ static void linkCmdWifiCreds(const char *arg1, const char *arg2) {
         snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
     }
     linkSend("OK WIFI %s", ip_str);
+}
+
+// Face lock/unlock handlers (CAM_PROTOCOL face-follow extension)
+static void linkCmdLock() {
+    int ret = face_detect_lock();
+    if (ret == 0) {
+        linkSend("OK LOCK");
+    } else if (ret == -1) {
+        linkSend("ERR IO");        // detector not initialised
+    } else if (ret == -2) {
+        linkSend("ERR IO");        // camera frame grab failed
+    } else if (ret == -3) {
+        linkSend("ERR IO");        // JPEG decode failed
+    } else if (ret == -4) {
+        linkSend("ERR NOENT");     // no face found to lock onto
+    } else {
+        linkSend("ERR STATE");
+    }
+}
+
+static void linkCmdUnlock() {
+    face_detect_unlock();
+    linkSend("OK UNLOCK");
 }
 
 // Live camera preview on eye displays — no SD card needed.
@@ -1160,7 +1196,7 @@ static void camLinkInit() {
     uart_cfg.stop_bits = UART_STOP_BITS_1;
     uart_cfg.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
     uart_cfg.source_clk = UART_SCLK_DEFAULT;  // match main controller's clock source
-    ESP_ERROR_CHECK(uart_driver_install(CAM_LINK_UART, 256, 0, 0, nullptr, 0));
+    ESP_ERROR_CHECK(uart_driver_install(CAM_LINK_UART, 256, 256, 0, nullptr, 0));
     ESP_ERROR_CHECK(uart_param_config(CAM_LINK_UART, &uart_cfg));
     ESP_ERROR_CHECK(uart_set_pin(CAM_LINK_UART, CAM_LINK_TX_PIN, CAM_LINK_RX_PIN,
                                   UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
@@ -1789,14 +1825,18 @@ extern "C" void app_main() {
     // Eyes first (life sign)
     eyeDisplayInit();
 
-    // UART link
-    camLinkInit();
-
     // Camera
     if (!initCamera()) {
         ESP_LOGE(TAG, "Camera init failed - only UART link and eyes active");
         while (true) { camLinkLoop(); vTaskDelay(pdMS_TO_TICKS(10)); }
     }
+
+#if FACE_DETECT_ENABLED
+    // Face detection (ESP-WHO). Non-fatal: tracking simply won't work if init fails.
+    if (face_detect_init() != 0) {
+        ESP_LOGW(TAG, "Face detection init failed - follow mode will be unavailable");
+    }
+#endif
 
     // SD card — skipped: SD_CS (GPIO2) conflicts with EYE_L_CS (GPIO2).
     // The two SPI buses (SPI2 for SD, SPI3 for eyes) can't share the same
@@ -1833,10 +1873,31 @@ extern "C" void app_main() {
         // Don't reboot — the main controller will push credentials via WIFI_CREDS
     }
 
+    // UART link — start AFTER all init is done so CAM is ready to respond
+    // to HELLO immediately when the main controller receives EVT BOOT.
+    camLinkInit();
+
     // Main loop
+#if FACE_DETECT_ENABLED
+    int64_t last_detect_us = 0;
+#endif
     while (true) {
         eyeDisplayLoop();
         camLinkLoop();
+
+#if FACE_DETECT_ENABLED
+        // Face detection: grab a frame at ~5 Hz and run the pipeline.
+        int64_t now = esp_timer_get_time();
+        if (now - last_detect_us > 200000LL) {  // 200ms
+            camera_fb_t* fb = esp_camera_fb_get();
+            if (fb) {
+                face_detect_process(fb->buf, fb->len);
+                esp_camera_fb_return(fb);
+                last_detect_us = now;
+            }
+        }
+#endif
+
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

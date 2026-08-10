@@ -15,6 +15,7 @@
 
 #include "walle_motion.h"
 #include "walle_cam_link.h"
+#include "walle_face_tracker.h"
 #include "config.h"
 #include "mcp_server.h"
 
@@ -228,6 +229,33 @@ void WalleMotion::RegisterMcpTools() {
                 return true;
             }
             return std::string("unknown action, use photo/record_start/record_stop/preview/replay/stop");
+        });
+
+    // -- Face Follow -------------------------------------------------
+    mcp.AddTool("self.walle.follow_me",
+        "启动人脸跟随：锁定摄像头画面中最大的人脸，Wall-E 会转头和移动身体来跟踪这个人。"
+        "如果目标转身背对摄像头，会切换到人体检测模式继续跟随（通过衣服颜色匹配确认是同一个人）。"
+        "说'跟着我'或'follow me'来触发。",
+        PropertyList(),
+        [this](const PropertyList&) -> ReturnValue {
+            auto& cam = WalleCamLink::GetInstance();
+            if (!cam.LockPerson()) {
+                return std::string("人脸登记失败：摄像头 UART 链路离线，或当前画面中没有检测到人脸");
+            }
+            auto& tracker = WalleFaceTracker::GetInstance();
+            tracker.StartFollow();
+            return true;
+        });
+
+    mcp.AddTool("self.walle.stop_follow",
+        "停止人脸跟随，机器人原地停止，解除人脸锁定。",
+        PropertyList(),
+        [this](const PropertyList&) -> ReturnValue {
+            auto& tracker = WalleFaceTracker::GetInstance();
+            tracker.StopFollow();
+            auto& cam = WalleCamLink::GetInstance();
+            cam.UnlockPerson();
+            return true;
         });
 
     // -- Battery -----------------------------------------------------

@@ -257,6 +257,21 @@ void WalleCamLink::HandleEvent(const char* line) {
         // §5: recording aborted on the CAM side (SD full / write failure)
         ESP_LOGW(TAG, "Recording aborted by CAM module:%s", line + 12);
         recording_.store(false);
+    } else if (strncmp(line, "EVT TRACK", 9) == 0) {
+        // §5: face/body tracking event — "EVT TRACK <type> <x> <y> <w> <h> <conf>"
+        TrackEvent evt;
+        int n = sscanf(line + 10, "%d %d %d %d %d %d",
+                       &evt.type, &evt.x, &evt.y, &evt.w, &evt.h, &evt.conf);
+        if (n >= 2 && evt.type >= 0 && evt.type <= 2) {
+            if (evt.type != last_track_type_) {
+                ESP_LOGI(TAG, "EVT TRACK type=%d (%d,%d %dx%d) conf=%d",
+                         evt.type, evt.x, evt.y, evt.w, evt.h, evt.conf);
+                last_track_type_ = evt.type;
+            }
+            if (track_cb_) track_cb_(evt);
+        } else {
+            ESP_LOGW(TAG, "Malformed EVT TRACK: %s", line);
+        }
     } else if (strncmp(line, "EVT ERR", 7) == 0) {
         // §5: reserved in v1 - log only
         ESP_LOGW(TAG, "CAM module async error:%s", line + 7);
@@ -597,6 +612,25 @@ bool WalleCamLink::Abort() {
     }
     std::string resp;
     return Command("ABORT", resp, kControlTimeoutMs, 1, nullptr);
+}
+
+bool WalleCamLink::LockPerson() {
+    if (!online_.load()) {
+        ESP_LOGW(TAG, "LOCK unavailable: UART link down");
+        return false;
+    }
+    std::string resp;
+    // 1s timeout — CAM just needs to run face detect + compute histogram
+    return Command("LOCK", resp, 1000, 1, nullptr);
+}
+
+bool WalleCamLink::UnlockPerson() {
+    if (!online_.load()) {
+        ESP_LOGW(TAG, "UNLOCK unavailable: UART link down");
+        return false;
+    }
+    std::string resp;
+    return Command("UNLOCK", resp, kControlTimeoutMs, 1, nullptr);
 }
 
 bool WalleCamLink::SyncWifi() {

@@ -43,6 +43,8 @@
 | `ABORT` | — | `OK ABORT` | 中止进行中的拍照流程或回放，恢复表情 |
 | `LIST` | `photos [max]` | 多行块：`OK BEGIN <n>` → n 行 `F <path> <size>` → `OK END` | 调试/文件浏览（可选实现） |
 | `WIFI_CREDS` | `<url_encoded_ssid> <url_encoded_password>` | `OK WIFI <ip>` / `ERR WIFI <code>` | 主控推送 WiFi 凭证（见 §4.2） |
+| `LOCK` | — | `OK LOCK` / `ERR NOENT` / `ERR IO` | 人脸登记：锁定当前最大人脸，采集躯干 HSV 颜色直方图为 reference |
+| `UNLOCK` | — | `OK UNLOCK` | 清除人脸登记 reference |
 
 ## 4. PHOTO 拍照流程（CAM 侧状态机）
 
@@ -93,6 +95,7 @@
 |---|---|---|
 | `EVT BOOT` | `<proto_ver>` | CAM 上电/重启后主动发一次；主控收到后重发 `HELLO` 并刷新状态 |
 | `EVT REC_DONE` | `<path> <frames>` | 录像**异常中止**（SD 满/写失败/连续丢帧）时上报；正常 `REC STOP` 的响应即 `OK REC OFF`，不重复发事件 |
+| `EVT TRACK` | `<type> <x> <y> <w> <h> <conf>` | 人脸/人体跟踪结果。type=0 无目标，type=1 人脸，type=2 人体（颜色匹配后背/侧身）。坐标 QVGA 像素。~5Hz。 |
 | `EVT ERR` | `<code> <msg>` | 异步错误（**预留，v1 不实现**） |
 
 ## 6. 错误格式与码

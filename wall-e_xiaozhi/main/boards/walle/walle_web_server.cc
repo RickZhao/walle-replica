@@ -8,6 +8,7 @@
 #include "walle_web_server.h"
 #include "walle_motion.h"
 #include "walle_cam_link.h"
+#include "walle_face_tracker.h"
 #include "config.h"
 
 #include <esp_log.h>
@@ -55,6 +56,15 @@ input[type=range]{flex:1}
 </div>
 <div id="cammsg" style="font-size:14px;color:#8f8"></div>
 <div id="filebox" style="display:none;background:#1a2634;border-radius:8px;padding:8px;margin-top:6px;font-size:14px"></div>
+
+<h2>Face Follow</h2>
+<div id="facectl" style="display:none">
+<button onclick="faceRegister()">Register Face</button>
+<button onclick="faceClear()">Clear</button>
+<button onclick="faceStart()">Start Follow</button>
+<button onclick="faceStop()">Stop</button>
+</div>
+<div id="facemsg" style="font-size:14px;color:#8f8"></div>
 
 <h2>Drive</h2>
 <div>
@@ -143,6 +153,14 @@ servos.forEach(([id,name,v])=>{
     onchange="post('/servoControl',{servo:'${id}',value:this.value})">`;
   box.appendChild(d);
 });
+function faceMsg(t){document.getElementById('facemsg').textContent=t;}
+function faceFetch(u,m){faceMsg('...');fetch(u,{method:'POST'}).then(r=>r.json()).then(j=>faceMsg(j.status==='OK'?m:'failed: '+(j.msg||'error'))).catch(e=>faceMsg('failed'));}
+function faceRegister(){faceFetch('/face/register','Face registered');}
+function faceClear(){faceFetch('/face/unregister','Cleared');}
+function faceStart(){fetch('/follow',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=start'}).then(r=>r.json()).then(j=>faceMsg(j.status==='OK'?'Following...':'Start failed')).catch(e=>faceMsg('failed'));}
+function faceStop(){fetch('/follow',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=stop'}).then(r=>r.json()).then(j=>faceMsg(j.status==='OK'?'Stopped':'Stop failed')).catch(e=>faceMsg('failed'));}
+function pollFace(){fetch('/api/face_status').then(r=>r.json()).then(j=>{if(j.registered!==undefined){document.getElementById('facectl').style.display='block';faceMsg((j.registered?'OK Registered':'Not registered')+' | '+j.state+(j.type==1?'(face)':j.type==2?'(body)':''));}}).catch(e=>{});}
+pollFace();setInterval(pollFace,2000);
 let auto=false;
 function post(url,params){fetch(url,{method:'POST',
   headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -352,6 +370,60 @@ static esp_err_t CamViewHandler(httpd_req_t* req) {
     return SendOk(req);
 }
 
+// -- Face registration / follow --------------------------------------
+static esp_err_t FaceRegisterHandler(httpd_req_t* req) {
+    auto& cam = WalleCamLink::GetInstance();
+    if (!cam.LockPerson()) {
+        return SendJson(req, "{\"status\":\"ERR\",\"msg\":\"LOCK failed — UART link down or no face detected\"}");
+    }
+    return SendJson(req, "{\"status\":\"OK\"}");
+}
+
+static esp_err_t FaceUnregisterHandler(httpd_req_t* req) {
+    auto& cam = WalleCamLink::GetInstance();
+    cam.UnlockPerson();
+    return SendJson(req, "{\"status\":\"OK\"}");
+}
+
+static esp_err_t FollowHandler(httpd_req_t* req) {
+    std::string body = ReadBody(req);
+    char action[16];
+    if (!FormParam(body, "action", action, sizeof(action))) {
+        return SendErr(req, "missing action");
+    }
+    auto& tracker = WalleFaceTracker::GetInstance();
+    if (strcmp(action, "start") == 0) {
+        tracker.StartFollow();
+    } else if (strcmp(action, "stop") == 0) {
+        tracker.StopFollow();
+    } else {
+        return SendErr(req, "unknown action, use start/stop");
+    }
+    return SendJson(req, "{\"status\":\"OK\"}");
+}
+
+static esp_err_t FaceStatusHandler(httpd_req_t* req) {
+    auto& tracker = WalleFaceTracker::GetInstance();
+    auto& cam = WalleCamLink::GetInstance();
+
+    int x, y, w, h, conf;
+    bool has_target = tracker.GetTargetBox(x, y, w, h, conf);
+    auto state = tracker.GetState();
+    auto type = tracker.GetTargetType();
+
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"registered\":%s,\"state\":\"%s\",\"type\":%d,\"has_target\":%s,\"bbox\":[%d,%d,%d,%d],\"conf\":%d}",
+        cam.IsOnline() ? "true" : "false",
+        state == WalleFaceTracker::State::kIdle ? "IDLE" :
+        state == WalleFaceTracker::State::kSearch ? "SEARCH" :
+        state == WalleFaceTracker::State::kFollow ? "FOLLOW" : "LOST",
+        (int)type,
+        has_target ? "true" : "false",
+        x, y, w, h, conf);
+    return SendJson(req, buf);
+}
+
 
 // -------------------------------------------------------------------
 // Server lifecycle
@@ -384,6 +456,10 @@ esp_err_t WalleWebServerStart() {
         { .uri = "/gamepadStatus",  .method = HTTP_POST, .handler = GamepadStatusHandler, .user_ctx = nullptr },
         { .uri = "/api/cam_url",    .method = HTTP_GET,  .handler = CamUrlHandler,        .user_ctx = nullptr },
         { .uri = "/camview",        .method = HTTP_POST, .handler = CamViewHandler,       .user_ctx = nullptr },
+        { .uri = "/face/register",  .method = HTTP_POST, .handler = FaceRegisterHandler,  .user_ctx = nullptr },
+        { .uri = "/face/unregister",.method = HTTP_POST, .handler = FaceUnregisterHandler,.user_ctx = nullptr },
+        { .uri = "/follow",         .method = HTTP_POST, .handler = FollowHandler,        .user_ctx = nullptr },
+        { .uri = "/api/face_status",.method = HTTP_GET,  .handler = FaceStatusHandler,    .user_ctx = nullptr },
     };
     for (const auto& route : routes) {
         httpd_register_uri_handler(s_server, &route);

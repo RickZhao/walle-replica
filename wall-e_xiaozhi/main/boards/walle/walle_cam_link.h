@@ -25,6 +25,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <string>
 
 #include <freertos/FreeRTOS.h>
@@ -103,6 +104,24 @@ public:
     /// Returns true on success (CAM replied OK WIFI <ip>).
     bool SyncWifi();
 
+    /// Lock onto the current largest face: CAM captures face + torso HSV
+    /// colour histogram as the person reference for body-tracking fallback.
+    /// Returns true on CAM "OK LOCK".
+    bool LockPerson();
+
+    /// Clear the locked reference. Returns true on CAM "OK UNLOCK".
+    bool UnlockPerson();
+
+    // -- EVT TRACK callback (face/body tracking events from CAM module) --
+    struct TrackEvent {
+        int type = 0;       // 0=no target, 1=face, 2=colour-matched body
+        int x = 0, y = 0;   // bbox top-left (pixels, QVGA frame)
+        int w = 0, h = 0;   // bbox size
+        int conf = 0;       // confidence 0-100
+    };
+    using TrackCallback = std::function<void(const TrackEvent&)>;
+    void SetTrackCallback(TrackCallback cb) { track_cb_ = std::move(cb); }
+
 private:
     WalleCamLink() = default;
     WalleCamLink(const WalleCamLink&) = delete;
@@ -137,4 +156,6 @@ private:
     SemaphoreHandle_t cmd_mutex_ = nullptr;     // serialises §8 in-flight commands
     QueueHandle_t line_queue_ = nullptr;        // response lines (RX -> Command)
     TaskHandle_t health_task_ = nullptr;        // notified by EVT BOOT
+    TrackCallback track_cb_;                    // EVT TRACK handler
+    int last_track_type_ = -1;                   // for change-logging (avoid spam)
 };

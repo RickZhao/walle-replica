@@ -148,4 +148,19 @@
 // Wi-Fi connect timeout -> auto switch to 4G (1=on, 0=enter Wi-Fi config mode)
 #define WIFI_AUTO_FALLBACK_4G 1
 
+// ---- Face detection & tracking (CAM module → main controller over UART) ----
+// CAM runs ESP-WHO face+body detection; results arrive as EVT TRACK events.
+// WalleFaceTracker runs a 20Hz PID control loop to follow the locked person.
+#define FACE_TRACK_ENABLED       1
+#define FACE_TRACK_PERIOD_MS     50    // 20Hz control loop
+#define FACE_TRACK_LOST_MS       1500  // T1: face+body both lost → LOST
+#define FACE_TRACK_GIVEUP_MS     10000 // T2: lost too long → IDLE (clear reference)
+#define FACE_TRACK_MAX_SPEED     40    // max motor speed during follow (0-100)
+#define FACE_TRACK_TURN_GAIN     0.6f  // PID P-gain for turning
+#define FACE_TRACK_FWD_GAIN      0.4f  // PID P-gain for forward/backward
+#define FACE_TRACK_DEADZONE_PCT  10    // dead zone % of frame width (no turn within)
+#define FACE_TRACK_TARGET_AREA   12    // ideal face area % of frame (~2m distance at VGA)
+#define FACE_TRACK_BODY_WEIGHT   0.7f  // body detection confidence multiplier vs face
+#define FACE_TRACK_HEAD_ONLY_PCT 20    // small offset: turn head only, not body
+
 #endif // _BOARD_CONFIG_H_
