@@ -64,6 +64,12 @@ static bool  s_has_ref = false;
 // Model object (human_face_detect package from ESP component registry)
 static HumanFaceDetect* s_face_detector = nullptr;
 
+// Hysteresis: require N consecutive detections/misses to switch state.
+static int  s_face_hit_count = 0;   // consecutive frames with a face
+static int  s_face_miss_count = 0;  // consecutive frames without a face
+static bool s_face_active = false;  // current stable state
+static constexpr int kHysteresis = 2;  // frames before switching
+
 // Temporary decode buffer (QVGA RGB565 = 320*240*2 = 153600 bytes)
 static uint8_t* s_rgb_buf = nullptr;
 static constexpr int kQvgaW = 320;
@@ -278,7 +284,25 @@ void face_detect_process(const uint8_t* jpeg_buf, size_t jpeg_len) {
         }
     }
 
+    // ---- Hysteresis: prevent rapid face/no-face oscillation ----
     if (face_found) {
+        s_face_hit_count++;
+        s_face_miss_count = 0;
+        if (s_face_hit_count >= kHysteresis) {
+            s_face_active = true;
+            s_face_hit_count = kHysteresis;  // clamp
+        }
+    } else {
+        s_face_miss_count++;
+        s_face_hit_count = 0;
+        if (s_face_miss_count >= kHysteresis) {
+            s_face_active = false;
+            s_face_miss_count = kHysteresis;
+        }
+    }
+
+    // Only emit when the stable state is "face found"
+    if (s_face_active && face_found) {
         send_track(1, best_x, best_y, best_w, best_h, best_conf);
         return;
     }

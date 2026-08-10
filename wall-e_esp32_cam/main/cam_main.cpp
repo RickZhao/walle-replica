@@ -983,6 +983,8 @@ static void linkCmdWifiCreds(const char *arg1, const char *arg2) {
 
     if (strlen(ssid) == 0) { linkSend("ERR BAD_ARG"); return; }
 
+    ESP_LOGI(TAG, "WIFI_CREDS decoded: SSID='%s' pass_len=%d", ssid, (int)strlen(password));
+
     // Save to NVS for next boot
     saveWifiCreds(ssid, password);
 

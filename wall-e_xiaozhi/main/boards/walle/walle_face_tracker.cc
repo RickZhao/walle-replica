@@ -215,6 +215,11 @@ void WalleFaceTracker::PidStep() {
         turn = std::max(-max_speed, std::min(max_speed, turn));
         move = std::max(-max_speed, std::min(max_speed, move));
 
+        // EMA smoothing (alpha=0.4) — prevent abrupt motor changes
+        constexpr float kAlpha = 0.4f;
+        turn = (int)(kAlpha * turn + (1.0f - kAlpha) * last_turn_);
+        move = (int)(kAlpha * move + (1.0f - kAlpha) * last_move_);
+
         // Apply dead zones — don't jitter
         if (std::abs(turn) < 5 && std::abs(move) < 5) {
             turn = 0;
