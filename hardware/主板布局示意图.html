@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Wall-E 主板布局示意图（方案A · 双层堆叠 + 摄像头背板）</title>
+  <style>
+    body {
+      margin: 24px;
+      background: #f5f5f2;
+      font-family: "Microsoft YaHei", sans-serif;
+    }
+
+    svg {
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+
+    text {
+      font-family: "Microsoft YaHei", sans-serif;
+    }
+  </style>
+</head>
+
+<body>
+  <svg viewBox="0 0 1420 1020" width="1420">
+    <defs>
+      <pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="8" height="8" fill="#3d3d00" />
+        <line x1="0" y1="0" x2="0" y2="8" stroke="#e6c200" stroke-width="3" />
+      </pattern>
+    </defs>
+
+    <!-- 标题 -->
+    <text x="70" y="30" font-size="20" font-weight="bold" fill="#222">Wall-E 主板布局示意图 — 方案 A：双层堆叠（90×72）+
+      摄像头背板（40×55）</text>
+    <text x="70" y="50" font-size="12" fill="#555">比例 6px = 1mm（等比例）· 2026-08-10 · 模块尺寸已人工复核 ·
+      参考：另一套硬件-主板/副板/摄像头背板.png</text>
+
+    <!-- ================= 主板 · 上层（顶面） ================= -->
+    <text x="70" y="80" font-size="14" font-weight="bold" fill="#0e6b33">主板 · 上层（顶面）：ESP32-S3 + LU9685 并排</text>
+    <rect x="70" y="90" width="540" height="432" fill="#0e6b33" stroke="#083d1d" stroke-width="3" />
+
+    <!-- 安装孔 M3 ×4 -->
+    <g>
+      <circle cx="94" cy="114" r="10" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="94" cy="114" r="4" fill="#222" />
+      <circle cx="586" cy="114" r="10" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="586" cy="114" r="4" fill="#222" />
+      <circle cx="94" cy="498" r="10" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="94" cy="498" r="4" fill="#222" />
+      <circle cx="586" cy="498" r="10" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="586" cy="498" r="4" fill="#222" />
+    </g>
+
+    <!-- ESP32-S3（横放，水平居中；USB-C 朝左，天线在板内禁布条） -->
+    <rect x="168" y="150" width="343" height="168" fill="#262626" stroke="#bbb" />
+    <rect x="168" y="150" width="343" height="8" fill="#444" />
+    <rect x="168" y="310" width="343" height="8" fill="#444" />
+    <rect x="484" y="150" width="27" height="168" fill="url(#hatch)" stroke="#e6c200" stroke-dasharray="4 3" />
+    <text x="497" y="236" font-size="10" fill="#ffe97a" text-anchor="middle"
+      transform="rotate(-90 497 236)">天线禁布条</text>
+    <rect x="166" y="170" width="8" height="46" fill="#bbb" />
+    <rect x="166" y="232" width="8" height="46" fill="#bbb" />
+    <text x="178" y="164" font-size="8" fill="#ddd">USB-C×2 朝左</text>
+    <text x="340" y="222" font-size="14" fill="#fff" text-anchor="middle">ESP32-S3 N16R8（水平居中）</text>
+    <text x="340" y="242" font-size="10" fill="#999" text-anchor="middle">57.15×27.94 · 2×22P 排母（排距25.40/首尾53.34）</text>
+
+    <!-- LU9685（舵机座朝下板边） -->
+    <rect x="142" y="330" width="384" height="163" fill="#262626" stroke="#bbb" />
+    <rect x="142" y="338" width="10" height="147" fill="#444" />
+    <rect x="516" y="338" width="10" height="147" fill="#444" />
+    <text x="334" y="400" font-size="13" fill="#fff" text-anchor="middle">LU9685-20CU 舵机驱动</text>
+    <text x="334" y="420" font-size="10" fill="#999" text-anchor="middle">64.01×27.18 · I2C 0x40 · 两侧 7P</text>
+    <rect x="310" y="316" width="48" height="16" fill="#3a2a10" stroke="#ff9800" />
+    <text x="334" y="328" font-size="9" fill="#ffcc80" text-anchor="middle">V+ 2P</text>
+    <rect x="152" y="459" width="364" height="30" fill="#3a2a10" stroke="#ff9800" stroke-dasharray="5 3" />
+    <text x="334" y="478" font-size="10" fill="#ffcc80" text-anchor="middle">16×3P 舵机座（朝下板边出线↓）· 通道9=照明灯</text>
+
+    <!-- 板名丝印 -->
+    <text x="300" y="512" font-size="11" fill="#ffffff" opacity="0.7" text-anchor="middle">WALL-E MAINBOARD · 堆叠 ·
+      90×72</text>
+
+    <!-- 顶边：12V 焊盘居中 + J-4G（4G 模组，远程，靠左） -->
+    <circle cx="316" cy="120" r="7" fill="#7a1f1f" stroke="#ff8a80" stroke-width="2" />
+    <circle cx="388" cy="120" r="7" fill="#7a1f1f" stroke="#ff8a80" stroke-width="2" />
+    <text x="352" y="106" font-size="9" fill="#ff8a80" text-anchor="middle">12V IN 焊盘×2</text>
+    <rect x="106" y="102" width="132" height="36" fill="#1a3a5c" stroke="#64b5f6" />
+    <text x="172" y="124" font-size="8" fill="#b3d9ff" text-anchor="middle">J-4G 8P · 4G mini 核心板</text>
+
+    <!-- 左边：MOT-A + J-PANEL（FPC22P → 副板/面板板） -->
+    <g fill="#1a3a5c" stroke="#64b5f6">
+      <rect x="82" y="150" width="36" height="42" />
+    </g>
+    <text x="100" y="174" font-size="8" fill="#b3d9ff" text-anchor="middle">MOT-A</text>
+    <rect x="82" y="210" width="42" height="150" fill="#e8e0c8" stroke="#a89f80" />
+    <text x="103" y="280" font-size="8" fill="#5a5232" text-anchor="middle" transform="rotate(-90 103 280)">J-PANEL FPC22P</text>
+
+    <!-- 右边：MOT-B / CAM（MOT-B 与左边 MOT-A 同高镜像） -->
+    <g fill="#1a3a5c" stroke="#64b5f6">
+      <rect x="562" y="150" width="36" height="42" />
+      <rect x="562" y="204" width="36" height="66" />
+    </g>
+    <text x="580" y="174" font-size="8" fill="#b3d9ff" text-anchor="middle">MOT-B</text>
+    <text x="580" y="240" font-size="9" fill="#b3d9ff" text-anchor="middle">CAM</text>
+
+    <!-- 尺寸标注 -->
+    <line x1="70" y1="540" x2="610" y2="540" stroke="#333" />
+    <line x1="70" y1="534" x2="70" y2="546" stroke="#333" />
+    <line x1="610" y1="534" x2="610" y2="546" stroke="#333" />
+    <text x="340" y="536" font-size="12" fill="#333" text-anchor="middle">90 mm</text>
+    <line x1="54" y1="90" x2="54" y2="522" stroke="#333" />
+    <line x1="48" y1="90" x2="60" y2="90" stroke="#333" />
+    <line x1="48" y1="522" x2="60" y2="522" stroke="#333" />
+    <text x="40" y="306" font-size="12" fill="#333" text-anchor="middle" transform="rotate(-90 40 306)">72 mm</text>
+
+    <!-- ================= 主板 · 下层（底面） ================= -->
+    <text x="720" y="80" font-size="14" font-weight="bold" fill="#0a4d24">主板 · 下层（底面）：电源 + 电机 + 音频（与顶面同向绘制，非镜像）</text>
+    <rect x="720" y="90" width="540" height="432" fill="#0a4d24" stroke="#06301a" stroke-width="3" />
+    <g>
+      <circle cx="744" cy="114" r="10" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="744" cy="114" r="4" fill="#222" />
+      <circle cx="1236" cy="114" r="10" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="1236" cy="114" r="4" fill="#222" />
+      <circle cx="744" cy="498" r="10" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="744" cy="498" r="4" fill="#222" />
+      <circle cx="1236" cy="498" r="10" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="1236" cy="498" r="4" fill="#222" />
+    </g>
+
+    <rect x="756" y="126" width="252" height="144" fill="#262626" stroke="#bbb" />
+    <text x="882" y="190" font-size="14" fill="#fff" text-anchor="middle">DC-DC 降压</text>
+    <text x="882" y="210" font-size="11" fill="#ffcc80" text-anchor="middle">10–36V→5V · ≥5A</text>
+    <text x="882" y="230" font-size="10" fill="#999" text-anchor="middle">42.00×24.00（实测）</text>
+    <text x="762" y="200" font-size="9" fill="#ff8a80">IN←12V焊盘</text>
+    <text x="962" y="200" font-size="9" fill="#ffcc80">5V→</text>
+
+    <rect x="1044" y="126" width="138" height="144" fill="#262626" stroke="#bbb" />
+    <text x="1113" y="192" font-size="12" fill="#fff" text-anchor="middle">PAM8406</text>
+    <text x="1113" y="210" font-size="9" fill="#999" text-anchor="middle">23×24（实测）</text>
+
+    <rect x="756" y="306" width="192" height="102" fill="#262626" stroke="#bbb" />
+    <text x="852" y="352" font-size="12" fill="#fff" text-anchor="middle">PCM5102 DAC</text>
+    <text x="852" y="370" font-size="9" fill="#999" text-anchor="middle">32×17（实测）</text>
+
+    <rect x="984" y="294" width="108" height="126" fill="#262626" stroke="#bbb" />
+    <text x="1038" y="350" font-size="12" fill="#fff" text-anchor="middle">TB6612</text>
+    <text x="1038" y="368" font-size="9" fill="#999" text-anchor="middle">18×21（实测）</text>
+
+    <circle cx="1128" cy="330" r="24" fill="#262626" stroke="#bbb" />
+    <text x="1128" y="334" font-size="9" fill="#fff" text-anchor="middle">C1</text>
+    <rect x="1116" y="402" width="42" height="18" fill="#262626" stroke="#bbb" stroke-dasharray="4 3" />
+    <text x="1137" y="415" font-size="9" fill="#fff" text-anchor="middle">D1*</text>
+    <rect x="1128" y="438" width="48" height="24" fill="#262626" stroke="#bbb" />
+    <text x="1152" y="453" font-size="9" fill="#fff" text-anchor="middle">R1R2</text>
+    <rect x="1188" y="438" width="26" height="18" fill="#262626" stroke="#bbb" />
+    <text x="1201" y="451" font-size="8" fill="#fff" text-anchor="middle">LED</text>
+    <rect x="1116" y="486" width="54" height="24" fill="#1a3a5c" stroke="#64b5f6" />
+    <text x="1143" y="502" font-size="8" fill="#b3d9ff" text-anchor="middle">J-DBG</text>
+    <text x="756" y="455" font-size="9" fill="#999">*D1 防反接可选（不用短接）；R1/R2 = 电池分压 100k+33k → GPIO1</text>
+
+    <!-- ================= 图例 ================= -->
+    <rect x="70" y="562" width="16" height="12" fill="#262626" stroke="#bbb" />
+    <text x="92" y="572" font-size="11" fill="#333">直插模块（排母插接）</text>
+    <rect x="240" y="562" width="16" height="12" fill="#1a3a5c" stroke="#64b5f6" />
+    <text x="262" y="572" font-size="11" fill="#333">连接器 / 焊盘</text>
+    <rect x="380" y="562" width="16" height="12" fill="url(#hatch)" />
+    <text x="402" y="572" font-size="11" fill="#333">天线禁布条（板内，≥4.6mm 无铜）</text>
+    <rect x="660" y="562" width="16" height="12" fill="#3a2a10" stroke="#ff9800" />
+    <text x="682" y="572" font-size="11" fill="#333">舵机电源/座（大电流）</text>
+
+    <!-- ================= 摄像头背板 ================= -->
+    <text x="70" y="612" font-size="14" font-weight="bold" fill="#5a3a8a">摄像头背板（头部小板）40×55 — 参考《另一套硬件-摄像头背板.png》</text>
+    <rect x="90" y="620" width="240" height="330" fill="#0e6b33" stroke="#083d1d" stroke-width="3" />
+
+    <!-- M2.5 安装孔 -->
+    <g>
+      <circle cx="108" cy="638" r="8" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="108" cy="638" r="3" fill="#222" />
+      <circle cx="312" cy="638" r="8" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="312" cy="638" r="3" fill="#222" />
+      <circle cx="108" cy="932" r="8" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="108" cy="932" r="3" fill="#222" />
+      <circle cx="312" cy="932" r="8" fill="#888" stroke="#ddd" stroke-width="2" />
+      <circle cx="312" cy="932" r="3" fill="#222" />
+    </g>
+
+    <!-- FPC22P 眼屏座 ×2（上/下边缘） -->
+    <rect x="180" y="650" width="140" height="36" fill="#e8e0c8" stroke="#a89f80" />
+    <text x="250" y="672" font-size="9" fill="#5a5232" text-anchor="middle">眼屏-L 座（按转接板实测）</text>
+    <rect x="180" y="884" width="140" height="36" fill="#e8e0c8" stroke="#a89f80" />
+    <text x="250" y="906" font-size="9" fill="#5a5232" text-anchor="middle">眼屏-R 座（按转接板实测）</text>
+
+    <!-- CAM 模块插座 2×10P -->
+    <text x="210" y="728" font-size="9" fill="#b3d9ff" text-anchor="middle">CAM 模块插座 2×10P（排距按实物）</text>
+    <rect x="138" y="740" width="16" height="137" fill="#444" stroke="#888" />
+    <rect x="264" y="740" width="16" height="137" fill="#444" stroke="#888" />
+
+    <!-- J-PWR 4P / J-DBG -->
+    <rect x="102" y="770" width="36" height="42" fill="#1a3a5c" stroke="#64b5f6" />
+    <text x="120" y="794" font-size="8" fill="#b3d9ff" text-anchor="middle">PWR</text>
+    <rect x="102" y="860" width="36" height="30" fill="#1a3a5c" stroke="#64b5f6" />
+    <text x="120" y="878" font-size="8" fill="#b3d9ff" text-anchor="middle">DBG</text>
+
+    <!-- 背板接口文字定义 -->
+    <text x="360" y="656" font-size="13" font-weight="bold" fill="#333">摄像头背板接口定义</text>
+    <text x="360" y="682" font-size="11" fill="#333">CAM 插座（2 列排母，排距/针序按实物，Step 4.5 核对后定稿）：</text>
+    <text x="360" y="700" font-size="11" fill="#555">· 左列参考：14 · 21 · 41 · 42 · 45 · 46 · GND · 5V</text>
+    <text x="360" y="718" font-size="11" fill="#555">· 右列参考：21 · 14 · GND · 5V · U0R · 3V3 · GND · 0 · 2 · 3V3</text>
+    <text x="360" y="746" font-size="11" fill="#333">眼屏接口 ×2（按眼屏转接板引出形式，实物实测定稿；BOM 的 22P FPC 已用于主板↔副板）：</text>
+    <text x="360" y="764" font-size="11" fill="#555">· 每屏用 7 信号：3V3 · GND · SCL=42 · SDA=45 · DC=41 · RST=46 ·
+      CS（左=GPIO2 / 右=GPIO0）</text>
+    <text x="360" y="782" font-size="11" fill="#555">· 接口针序按眼屏转接板实物实测，未用针悬空；0/45/46 为 strapping 引脚注意上电电平</text>
+    <text x="360" y="810" font-size="11" fill="#333">J-PWR 4P（来自主板 J-CAM，XHB 4P 50cm 线）：</text>
+    <text x="360" y="828" font-size="11" fill="#555">· 5V · GND · 主控9→CAM RX(14) · 主控10←CAM TX(21)；UART 交叉在背板上完成</text>
+    <text x="360" y="846" font-size="11" fill="#555">· J-DBG 焊盘 = CAM 日志（U0T/U0R/GND），板型核对调试用</text>
+    <text x="360" y="874" font-size="11" fill="#333">主板 J-CAM ↔ 背板 J-PWR ↔ CAM 模块 ↔ 2×FPC22P ↔ 眼屏转接板（头部内）</text>
+
+    <!-- ================= 副板（面板板） ================= -->
+    <text x="700" y="610" font-size="14" font-weight="bold" fill="#8a5a3a">副板（面板板）70×35 — 喇叭+麦+按键+1.3″屏（经 22P FPC 接主板 J-PANEL）</text>
+    <rect x="700" y="620" width="420" height="210" fill="#0a4d24" stroke="#06301a" stroke-width="3" />
+    <rect x="712" y="640" width="36" height="150" fill="#e8e0c8" stroke="#a89f80" />
+    <text x="730" y="720" font-size="9" fill="#5a5232" text-anchor="middle" transform="rotate(-90 730 720)">FPC22P</text>
+    <rect x="1040" y="640" width="60" height="36" fill="#1a3a5c" stroke="#64b5f6" />
+    <text x="1070" y="662" font-size="8" fill="#b3d9ff" text-anchor="middle">TFT 7P</text>
+    <rect x="1080" y="700" width="36" height="42" fill="#1a3a5c" stroke="#64b5f6" />
+    <text x="1098" y="724" font-size="8" fill="#b3d9ff" text-anchor="middle">MIC</text>
+    <rect x="760" y="660" width="80" height="40" fill="#3a2a10" stroke="#ff9800" stroke-dasharray="4 3" />
+    <text x="800" y="685" font-size="9" fill="#ffcc80" text-anchor="middle">SPK-L</text>
+    <rect x="900" y="660" width="80" height="40" fill="#3a2a10" stroke="#ff9800" stroke-dasharray="4 3" />
+    <text x="940" y="685" font-size="9" fill="#ffcc80" text-anchor="middle">SPK-R</text>
+    <g fill="#1a3a5c" stroke="#64b5f6">
+      <rect x="760" y="790" width="24" height="24" />
+      <rect x="796" y="790" width="24" height="24" />
+      <rect x="832" y="790" width="24" height="24" />
+      <rect x="868" y="790" width="24" height="24" />
+    </g>
+    <text x="772" y="806" font-size="7" fill="#b3d9ff" text-anchor="middle">B0</text>
+    <text x="808" y="806" font-size="7" fill="#b3d9ff" text-anchor="middle">38</text>
+    <text x="844" y="806" font-size="7" fill="#b3d9ff" text-anchor="middle">39</text>
+    <text x="880" y="806" font-size="7" fill="#b3d9ff" text-anchor="middle">41</text>
+    <g>
+      <circle cx="708" cy="628" r="6" fill="#888" stroke="#ddd" /><circle cx="708" cy="628" r="3" fill="#222" />
+      <circle cx="1112" cy="628" r="6" fill="#888" stroke="#ddd" /><circle cx="1112" cy="628" r="3" fill="#222" />
+      <circle cx="708" cy="822" r="6" fill="#888" stroke="#ddd" /><circle cx="708" cy="822" r="3" fill="#222" />
+      <circle cx="1112" cy="822" r="6" fill="#888" stroke="#ddd" /><circle cx="1112" cy="822" r="3" fill="#222" />
+    </g>
+    <text x="700" y="852" font-size="10" fill="#555">J-PANEL 22P 针脚定义见《主板设计说明.md》§1；FPC 22P 1.0mm 反向 30cm（BOM#29）</text>
+
+    <!-- ================= 底部备注 ================= -->
+    <text x="70" y="976" font-size="11" fill="#555">注：1) 主板单块 PCB 双面插接堆叠：排针+排母总高 ~8.5mm，背面针头露头 ~2.4mm，上下层 footprint 可重叠；安装铜柱 ≥15mm。</text>
+    <text x="70" y="992" font-size="11" fill="#555">　　 2) 12V 仅 2 个输入焊盘（Ø2mm，间距 5.08）；开关/保险丝板外电池线串接。</text>
+    <text x="70" y="1008" font-size="11" fill="#555">　　 3) ESP32 水平居中，USB-C 朝左（前方留 ≥15mm 插线空间）；天线区在模块右端、板内设禁布条（≥4.6mm 无铜）。</text>
+    <text x="70" y="1024" font-size="11" fill="#555">　　 4) MOT-A（左）↔ MOT-B（右）同高镜像；J-PANEL（FPC22P→副板）左板边，CAM 右板边，J-4G（4G）顶边左，12V 焊盘顶边居中；喇叭/麦/按键/1.3″屏全部经 22P 软排线到副板（主板不再单列 MIC/TFT/BTN/SPK 连接器）。</text>
+    <text x="70" y="1040" font-size="11" fill="#555">　　 5) 连接器针脚定义见《主板设计说明.md》；背板 CAM/眼屏 FPC 针序待实物核对（Step 4.5）。</text>
+    <text x="70" y="1056" font-size="11" fill="#555">　　 6) ML307R-DL mini 核心板（AT 固件，24.2×20）经 8P 线束远程接 J-4G，吃 5V（自带稳压+SIM 座），UART 交叉接 GPIO2/3；EN 高电平通电→R_EN 10k 上拉默认开机；BAT/DP/DN 不用。</text>
+  </svg>
+</body>
+
+</html>

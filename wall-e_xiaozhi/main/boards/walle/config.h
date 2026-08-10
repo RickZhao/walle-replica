@@ -52,7 +52,7 @@
 #define DISPLAY_SPI_CS_PIN    GPIO_NUM_38   // stale
 #define DISPLAY_SPI_DC_PIN    GPIO_NUM_39   // stale
 #define DISPLAY_SPI_RESET_PIN GPIO_NUM_47   // stale
-#define DISPLAY_SPI_SCLK_HZ   (40 * 1000 * 1000)
+#define DISPLAY_SPI_SCLK_HZ   (16 * 1000 * 1000)   // 16MHz：状态屏 ST7789 经 30cm 22P 软排线到副板，40MHz 会花屏
 
 #define DISPLAY_BACKLIGHT_PIN           GPIO_NUM_48  // stale
 #define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
