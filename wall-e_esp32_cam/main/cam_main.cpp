@@ -1886,13 +1886,28 @@ extern "C" void app_main() {
         camLinkLoop();
 
 #if FACE_DETECT_ENABLED
-        // Face detection: grab a frame at ~5 Hz and run the pipeline.
+        // Face detection: copy JPEG then return frame immediately so the
+        // MJPEG stream handler isn't starved during model inference.
+        static uint8_t* s_jpeg_copy = nullptr;
+        static size_t   s_jpeg_cap = 0;
         int64_t now = esp_timer_get_time();
         if (now - last_detect_us > 200000LL) {  // 200ms
             camera_fb_t* fb = esp_camera_fb_get();
             if (fb) {
-                face_detect_process(fb->buf, fb->len);
-                esp_camera_fb_return(fb);
+                if (!s_jpeg_copy || fb->len > s_jpeg_cap) {
+                    free(s_jpeg_copy);
+                    s_jpeg_cap = fb->len + 1024;
+                    s_jpeg_copy = (uint8_t*)heap_caps_malloc(s_jpeg_cap,
+                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                }
+                if (s_jpeg_copy) {
+                    memcpy(s_jpeg_copy, fb->buf, fb->len);
+                    size_t len = fb->len;
+                    esp_camera_fb_return(fb);           // release frame immediately
+                    face_detect_process(s_jpeg_copy, len);  // detect on copy
+                } else {
+                    esp_camera_fb_return(fb);
+                }
                 last_detect_us = now;
             }
         }
