@@ -101,13 +101,16 @@ function initCamera() {
       camapi = new URL(stream_url).origin;
       document.getElementById('cam').src = stream_url;
       document.getElementById('camctl').style.display = 'block';
+      camMsg('CAM online');
     } else {
       document.getElementById('cam').style.display = 'none';
-      camMsg('CAM offline — waiting for UART link');
+      camMsg('CAM offline — retrying...');
+      setTimeout(initCamera, 3000);
     }
   }).catch(()=>{
     document.getElementById('cam').style.display = 'none';
-    camMsg('CAM unreachable');
+    camMsg('CAM unreachable — retrying...');
+    setTimeout(initCamera, 3000);
   });
 }
 initCamera();
