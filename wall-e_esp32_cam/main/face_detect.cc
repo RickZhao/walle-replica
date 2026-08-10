@@ -35,10 +35,8 @@
 #include <cmath>
 #include <algorithm>
 
-// ESP-WHO headers (available after idf.py reconfigure pulls the component)
-// #include "dl_image.hpp"   — dl::image::FaceDetect, dl::image::HumanDetect
-// #include "human_face_detect_msr01.hpp"
-// #include "human_face_detect_mnp01.hpp"
+#include "human_face_detect.hpp"
+#include "dl_image.hpp"
 
 static const char* TAG = "face_detect";
 
@@ -63,9 +61,8 @@ static int64_t s_last_detect_us = 0;
 static float s_ref_hist[HIST_BINS_H * HIST_BINS_S] = {0};
 static bool  s_has_ref = false;
 
-// Model objects (ESP-WHO, allocated in PSRAM)
-// static dl::image::FaceDetect*  s_face_detector = nullptr;
-// static dl::image::HumanDetect* s_body_detector = nullptr;
+// Model object (human_face_detect package from ESP component registry)
+static HumanFaceDetect* s_face_detector = nullptr;
 
 // Temporary decode buffer (QVGA RGB565 = 320*240*2 = 153600 bytes)
 static uint8_t* s_rgb_buf = nullptr;
@@ -219,19 +216,23 @@ static bool decode_jpeg_qvga(const uint8_t* jpeg_buf, size_t jpeg_len) {
 int face_detect_init() {
     if (s_initialised) return 0;
 
-    // TODO: Load ESP-WHO models when esp-who component is pulled.
-    // s_face_detector = new dl::image::FaceDetect(
-    //     dl::image::FaceDetect::Model::MOBILE_NET_SSD);
-    // s_body_detector = new dl::image::HumanDetect(
-    //     dl::image::HumanDetect::Model::MOBILE_NET_SSD);
-
-    // Placeholder: allocate the decode buffer eagerly
+    // Allocate decode buffer
     if (!s_rgb_buf) {
         s_rgb_buf = (uint8_t*)jpeg_calloc_align(kRgbBufSize, 16);
         if (!s_rgb_buf) {
             ESP_LOGE(TAG, "No PSRAM for decode buffer");
             return -1;
         }
+    }
+
+    // Load the face detection model (MobileNet-SSD, quantized for ESP32-S3)
+    s_face_detector = new HumanFaceDetect(
+        static_cast<HumanFaceDetect::model_type_t>(0),  // default model (MOBILE_NET_SSD)
+        false  // allocate in PSRAM via malloc (not internal SRAM)
+    );
+    if (!s_face_detector) {
+        ESP_LOGE(TAG, "Failed to create face detector");
+        return -1;
     }
 
     s_initialised = true;
@@ -252,26 +253,30 @@ void face_detect_process(const uint8_t* jpeg_buf, size_t jpeg_len) {
     if (!decode_jpeg_qvga(jpeg_buf, jpeg_len)) return;
 
     // ---- Stage 1: Face detection (always on) ----
-    // TODO: Replace with real ESP-WHO inference
-    // auto& faces = s_face_detector->detect(s_rgb_buf, kQvgaW, kQvgaH);
-
-    // Placeholder: no face detection until ESP-WHO is pulled & compiled
     bool face_found = false;
     int best_x = 0, best_y = 0, best_w = 0, best_h = 0, best_conf = 0;
 
-    // if (!faces.empty()) {
-    //     // Pick the largest face above confidence threshold
-    //     for (const auto& f : faces) {
-    //         int area = f.bbox.width * f.bbox.height;
-    //         int conf = (int)(f.confidence * 100);
-    //         if (conf >= DETECT_MIN_CONFIDENCE && area > best_w * best_h) {
-    //             best_x = f.bbox.x; best_y = f.bbox.y;
-    //             best_w = f.bbox.width; best_h = f.bbox.height;
-    //             best_conf = conf;
-    //             face_found = true;
-    //         }
-    //     }
-    // }
+    if (s_face_detector) {
+        dl::image::img_t img(s_rgb_buf, kQvgaW, kQvgaH, dl::image::DL_IMAGE_PIX_TYPE_RGB565LE);
+        auto& faces = s_face_detector->run(img);
+
+        if (!faces.empty()) {
+            // Pick the largest face above confidence threshold
+            // result_t::box = [left, top, right, bottom]
+            for (const auto& f : faces) {
+                int w = f.box[2] - f.box[0];
+                int h = f.box[3] - f.box[1];
+                int area = w * h;
+                int conf = (int)(f.score * 100);
+                if (conf >= DETECT_MIN_CONFIDENCE && area > best_w * best_h) {
+                    best_x = f.box[0]; best_y = f.box[1];
+                    best_w = w; best_h = h;
+                    best_conf = conf;
+                    face_found = true;
+                }
+            }
+        }
+    }
 
     if (face_found) {
         send_track(1, best_x, best_y, best_w, best_h, best_conf);
@@ -317,7 +322,7 @@ void face_detect_process(const uint8_t* jpeg_buf, size_t jpeg_len) {
 }
 
 int face_detect_lock() {
-    if (!s_initialised) return -1;
+    if (!s_initialised || !s_face_detector) return -1;
 
     // Grab a fresh frame from the camera
     camera_fb_t* fb = esp_camera_fb_get();
@@ -329,23 +334,25 @@ int face_detect_lock() {
     }
     esp_camera_fb_return(fb);
 
-    // TODO: Run face detection to find the person to lock onto
-    // auto& faces = s_face_detector->detect(s_rgb_buf, kQvgaW, kQvgaH);
-    // if (faces.empty()) return -4;  // no face to lock onto
-    //
-    // // Take the largest face
-    // auto& best = faces[0];
-    // for (const auto& f : faces) {
-    //     if (f.bbox.area() > best.bbox.area()) best = f;
-    // }
-    //
-    // extract_torso_histogram(s_rgb_buf, kQvgaW, kQvgaH,
-    //                         best.bbox.x, best.bbox.y,
-    //                         best.bbox.width, best.bbox.height,
-    //                         s_ref_hist);
+    // Run face detection to find the person to lock onto
+    dl::image::img_t img(s_rgb_buf, kQvgaW, kQvgaH, dl::image::DL_IMAGE_PIX_TYPE_RGB565LE);
+    auto& faces = s_face_detector->run(img);
+    if (faces.empty()) return -4;  // no face to lock onto
 
-    // Placeholder: simulate a successful lock
-    // (will be replaced with real implementation after ESP-WHO integration)
+    // Take the largest face
+    auto& best = faces.front();
+    int best_area = (best.box[2] - best.box[0]) * (best.box[3] - best.box[1]);
+    for (const auto& f : faces) {
+        int area = (f.box[2] - f.box[0]) * (f.box[3] - f.box[1]);
+        if (area > best_area) { best = f; best_area = area; }
+    }
+
+    // Capture torso colour reference for body-detection fallback
+    extract_torso_histogram(s_rgb_buf, kQvgaW, kQvgaH,
+                            best.box[0], best.box[1],
+                            best.box[2] - best.box[0], best.box[3] - best.box[1],
+                            s_ref_hist);
+
     s_has_ref = true;
     s_locked = true;
     ESP_LOGI(TAG, "Person locked (colour reference captured)");
