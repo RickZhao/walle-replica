@@ -72,7 +72,11 @@ static const char *TAG = "cam";
 
 #define FACE_DETECT_ENABLED 1   // 1=face detect (JPEG decode only, no UART TX yet)
 
-#define CAM_SD_ENABLED     1   // SD code compiled but init skipped (GPIO2 conflict with EYE_L_CS)
+// Onboard TF slot (LC ESP32CAM_V1.1 schematic J1): SDMMC CLK=39/CMD=40/D0=41/D1=42,
+// D2/D3 pull-up only. UNUSABLE on this module: 39/40 are not broken out on the
+// headers, and D0/D1 collide with eye DC(41)/SCK(42). The old XIAO-derived SPI
+// pins (2/7/8/9) were wrong for this module — SD never shared DVP pins.
+#define CAM_SD_ENABLED     1   // SD compiled but init disabled (pins not available, see above)
 #define SD_CS_PIN          2
 #define SD_SCK_PIN         7
 #define SD_MISO_PIN        8
@@ -85,9 +89,11 @@ static const char *TAG = "cam";
 #define EYE_SPI_MOSI        45
 #define EYE_SPI_DC          41
 #define EYE_SPI_RST         46
-// NOTE: EYE_L_CS conflicts with SD_CS_PIN (both GPIO 2) — verify PCB wiring
+// Eye CS stay on GPIO2/0: the LC ESP32CAM_V1.1 (303ESPCAM01) module only
+// breaks out GPIO 0/2/14/21/41/42/45/46 on its headers — these are the only
+// pins available (see hardware/ESP32S3_CAM/原理图). GPIO0 is a strapping pin
+// but works as eye CS_R (idle high, BOOT pull-up not defeated).
 #define EYE_L_CS            2
-// NOTE: EYE_R_CS uses GPIO 0 (strapping pin) — ensure pull-up is not defeated
 #define EYE_R_CS            0
 
 #define CAM_LINK_UART        UART_NUM_1
@@ -1890,10 +1896,9 @@ extern "C" void app_main() {
 #endif
 
     // SD card — skipped: SD_CS (GPIO2) conflicts with EYE_L_CS (GPIO2).
-    // The two SPI buses (SPI2 for SD, SPI3 for eyes) can't share the same
-    // CS pin because spi_bus_initialize puts the pin in peripheral mode.
+    // SD stays disabled: onboard slot needs GPIO39/40 (not broken out) and
+    // 41/42 (used by eye DC/SCK) — see note at CAM_SD_ENABLED above.
 #if CAM_SD_ENABLED
-    // sd_ready = initSd();  // disabled — would reconfigure GPIO2 and break eyes
     sd_ready = false;
 #endif
 

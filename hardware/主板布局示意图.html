@@ -191,10 +191,10 @@
     <rect x="180" y="884" width="140" height="36" fill="#e8e0c8" stroke="#a89f80" />
     <text x="250" y="906" font-size="9" fill="#5a5232" text-anchor="middle">眼屏-R 座（按转接板实测）</text>
 
-    <!-- CAM 模块插座 2×10P -->
-    <text x="210" y="728" font-size="9" fill="#b3d9ff" text-anchor="middle">CAM 模块插座 2×10P（排距按实物）</text>
-    <rect x="138" y="740" width="16" height="137" fill="#444" stroke="#888" />
-    <rect x="264" y="740" width="16" height="137" fill="#444" stroke="#888" />
+    <!-- CAM 模块插座 2×8P（JP1/JP2） -->
+    <text x="210" y="728" font-size="9" fill="#b3d9ff" text-anchor="middle">CAM 模块插座 2×8P（间距 22.86mm）</text>
+    <rect x="138" y="740" width="16" height="107" fill="#444" stroke="#888" />
+    <rect x="264" y="740" width="16" height="107" fill="#444" stroke="#888" />
 
     <!-- J-PWR 4P / J-DBG -->
     <rect x="102" y="770" width="36" height="42" fill="#1a3a5c" stroke="#64b5f6" />
@@ -204,13 +204,12 @@
 
     <!-- 背板接口文字定义 -->
     <text x="360" y="656" font-size="13" font-weight="bold" fill="#333">摄像头背板接口定义</text>
-    <text x="360" y="682" font-size="11" fill="#333">CAM 插座（2 列排母，排距/针序按实物，Step 4.5 核对后定稿）：</text>
-    <text x="360" y="700" font-size="11" fill="#555">· 左列参考：14 · 21 · 41 · 42 · 45 · 46 · GND · 5V</text>
-    <text x="360" y="718" font-size="11" fill="#555">· 右列参考：21 · 14 · GND · 5V · U0R · 3V3 · GND · 0 · 2 · 3V3</text>
+    <text x="360" y="682" font-size="11" fill="#333">CAM 插座（2×8P 排母，间距 22.86mm；模组=艾尔赛 ESP32CAM_V1.1 / OV3660，仅引出 0/2/14/21/41/42/45/46，见 docs/PCB_REQUIREMENTS.md）：</text>
+    <text x="360" y="700" font-size="11" fill="#555">· JP1：EN · U0TXD(43) · U0RXD(44) · 3V3 · GND · BOOT(0) · IO2 · 3V3</text>
+    <text x="360" y="718" font-size="11" fill="#555">· JP2：5V · GND · IO46 · IO45 · IO42 · IO41 · IO21 · IO14</text>
     <text x="360" y="746" font-size="11" fill="#333">眼屏接口 ×2（按眼屏转接板引出形式，实物实测定稿；BOM 的 22P FPC 已用于主板↔副板）：</text>
-    <text x="360" y="764" font-size="11" fill="#555">· 每屏用 7 信号：3V3 · GND · SCL=42 · SDA=45 · DC=41 · RST=46 ·
-      CS（左=GPIO2 / 右=GPIO0）</text>
-    <text x="360" y="782" font-size="11" fill="#555">· 接口针序按眼屏转接板实物实测，未用针悬空；0/45/46 为 strapping 引脚注意上电电平</text>
+    <text x="360" y="764" font-size="11" fill="#555">· 每屏信号：3V3 · GND · SCL=42 · SDA=45 · DC=41 · RST=46 · CS（左=2 / 右=0）</text>
+    <text x="360" y="782" font-size="11" fill="#555">· 接口针序按眼屏转接板实物实测，未用针悬空；0/45/46 为 strapping 引脚注意上电电平；SD 卡不可用（引脚未引出）</text>
     <text x="360" y="810" font-size="11" fill="#333">J-PWR 4P（来自主板 J-CAM，XHB 4P 50cm 线）：</text>
     <text x="360" y="828" font-size="11" fill="#555">· 5V · GND · 主控9→CAM RX(14) · 主控10←CAM TX(21)；UART 交叉在背板上完成</text>
     <text x="360" y="846" font-size="11" fill="#555">· J-DBG 焊盘 = CAM 日志（U0T/U0R/GND），板型核对调试用</text>
@@ -252,7 +251,7 @@
     <text x="70" y="992" font-size="11" fill="#555">　　 2) 12V 仅 2 个输入焊盘（Ø2mm，间距 5.08）；开关/保险丝板外电池线串接。</text>
     <text x="70" y="1008" font-size="11" fill="#555">　　 3) ESP32 水平居中，USB-C 朝左（前方留 ≥15mm 插线空间）；天线区在模块右端、板内设禁布条（≥4.6mm 无铜）。</text>
     <text x="70" y="1024" font-size="11" fill="#555">　　 4) MOT-A（左）↔ MOT-B（右）同高镜像；J-PANEL（FPC22P→副板）左板边，CAM 右板边，J-4G（4G）顶边左，12V 焊盘顶边居中；喇叭/麦/按键/1.3″屏全部经 22P 软排线到副板（主板不再单列 MIC/TFT/BTN/SPK 连接器）。</text>
-    <text x="70" y="1040" font-size="11" fill="#555">　　 5) 连接器针脚定义见《主板设计说明.md》；背板 CAM/眼屏 FPC 针序待实物核对（Step 4.5）。</text>
+    <text x="70" y="1040" font-size="11" fill="#555">　　 5) 连接器针脚定义见《主板设计说明.md》/ docs/PCB_REQUIREMENTS.md；CAM 模组已确认（艾尔赛 ESP32CAM_V1.1，OV3660），眼屏 CS=2/0（模块唯一可用 IO），SD 卡不可用。</text>
     <text x="70" y="1056" font-size="11" fill="#555">　　 6) ML307R-DL mini 核心板（AT 固件，24.2×20）经 8P 线束远程接 J-4G，吃 5V（自带稳压+SIM 座），UART 交叉接 GPIO2/3；EN 高电平通电→R_EN 10k 上拉默认开机；BAT/DP/DN 不用。</text>
   </svg>
 </body>

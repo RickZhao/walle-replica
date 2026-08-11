@@ -6,8 +6,8 @@
 ## 关键决策（已与用户确认）
 
 1. 直接改 `boards/walle/config.h`，不新建板型（旧硬件接线配置被覆盖）。
-2. **保留 4G 回退**：ML307A 仍用 GPIO2/3（新引脚表未占用，BOM 无模组，需要时自行加接）。
-3. 摄像头改走 **UART 串口链路**（主控 GPIO9/10 ↔ CAM GPIO14/21），Wi-Fi MJPEG 预览保留。注：CAM 侧 21/14 按第三方文档接线，其有效性随 CAM 板型核对确认（见 Step 4.5；此前基于 XIAO Sense 的引脚冲突分析已作废——XIAO 预设来自本项目固件早期提交，非实际硬件）。
+2. **4G 回退**：ML307R-DL mini 核心板用 GPIO2/3，经 J-4G 8P 线束接入（吃 5V，SIM 在模块上，见 `hardware/主板设计说明.md` §1）。
+3. 摄像头改走 **UART 串口链路**（主控 GPIO9/10 ↔ CAM GPIO14/21），Wi-Fi MJPEG 预览保留。CAM 模组已核对确认（见 Step 4.5：艾尔赛 ESP32CAM_V1.1，OV3660）。
 4. 4 个按键全部实现：BOOT(0)、音量+(38)、音量-(39)、长按重启(41)。
 5. 眼睛屏（1.28 寸圆屏 ×2）**已确认接在 ESP32-CAM 模组上、由 CAM 控制**；接线已确认（2026-07-31）：共享 SPI（SCL=42、SDA=45、DC=41、RST=46），片选丝印 L/R 各自独立（左=GPIO2、右=GPIO0），VDD=3V3；驱动 IC 待确认（疑似 GC9A01）。主控侧 `EYE_DISPLAY_ENABLED=0` 为终态，不再等待主控接线。
 
@@ -23,7 +23,7 @@
 | 按键 | BOOT=0, VOL+=38, VOL-=39, 重启(长按)=41 |
 | CAM UART | TX=9, RX=10, 115200（仅宏落地，固件未实现；CAM 侧 21/14 待板型核对） |
 | 电池 ADC | GPIO1（文档无，待硬件确认分压） |
-| 4G ML307A | TX=2, RX=3（保留） |
+| 4G ML307R-DL | TX=2, RX=3（mini 核心板，J-4G 接入） |
 | 眼睛屏×2（接 CAM 模组） | 主控无引脚；CAM 侧共享 SPI：SCL=42, SDA(MOSI)=45, DC=41, RST=46，片选 L/R：左=2、右=0（已确认）；驱动 IC 待确认 |
 
 注意：**GPIO19/20 是 ESP32-S3 原生 USB D-/D+**，被 PWMA 和舵机 I2C 占用 → USB 串口任务已禁用（`WALLE_SERIAL_ENABLED=0`），日志走 UART0（GPIO43/44）。
@@ -43,7 +43,7 @@
 
 ### Step 4：CAM UART 串口链路（✅ 固件已实现 2026-08-01，未编译/未实机联调）
 
-> 前置依赖：Step 4.5 的板型核对（确认 CAM 侧 21/14 空闲可用、摄像头/SD 引脚正确）完成后实机验证。注意：CAM 侧 `CAM_LINK_RX_PIN=14` 与 `camera_pins.h` XIAO 预设的 Y6 撞脚，板型核对后可能要改。
+> 前置依赖：Step 4.5 已确认（艾尔赛 ESP32CAM_V1.1 / OV3660，摄像头引脚与 Freenove 预设匹配，CAM 侧 21/14 可用）。曾指出的 `CAM_LINK_RX_PIN=14` 与 XIAO 预设 Y6 撞脚问题，随板型切换到 Freenove 预设（Y6=12）已消除。
 
 **协议规范见 `docs/CAM_PROTOCOL.md`（2026-07-31 定稿）**，要点：
 
@@ -57,13 +57,12 @@
 - ✅ 主控侧切换调用方：`walle_mcp_tools.cc`（`self.walle.camera` → PHOTO/SHOW/ABORT/REC；`self.walle.eyes` 追加 EYES 下发）、`walle_web_server.cc`（`/camview` preview/stop）；`walle_cam_viewer` 标注废弃仅备查。
 - 验证（未做）：CAM 固件 Arduino IDE 编译（装 JPEGDEC）、`idf.py build`；实机按 `docs/CAM_PROTOCOL.md` §13 测试。
 
-### Step 4.5：CAM 板型核对（阻塞项 — 实机操作）
+### Step 4.5：CAM 板型核对（✅ 已完成，2026-08 实机调通）
 
-实际 CAM 模块是通用 **"ESP32-S3-CAM"（OV3660）**，而 `camera_pins.h:21` 当前选的是 `CAM_BOARD_XIAO_ESP32S3_SENSE`（XIAO 预设来自本项目固件早期提交，非硬件确认），SD 引脚（CS=2/SCK=7/MISO=8/MOSI=9）也是 XIAO 专用——摄像头/SD 引脚很可能整体不匹配，且摄像头功能**尚未验证**。
-
-- 查模块厂商资料（或实测）确认：摄像头引脚映射（疑似 Freenove/S3-EYE 式：`camera_pins.h` 第 2/3 预设）、SD 卡槽引脚、板载 LED 脚。
-- 修正 `camera_pins.h` 预设与 `wall-e_esp32_cam.ino` 的 SD 引脚，烧录验证：推流 `/stream`、`/capture` 拍照、SD 列表 `/files`。
-- 顺带确认：UART 用 GPIO21(TX)/GPIO14(RX) 在该模块上是否空闲可用；SD 引脚核对时避开眼屏已占引脚（0/2/41/42/45/46）。
+- 板型确认：**艾尔赛 ESP32CAM_V1.1（303ESPCAM01，OV3660 实机 PID 0x3660，8M PSRAM/16M Flash）**，厂商资料 `hardware/ESP32S3_CAM/`；`camera_pins.h` 用 Freenove 预设，摄像头 DVP 引脚调通（SCCB 4/5）。**模块仅在排针上引出 GPIO 0/2/14/21/41/42/45/46**。
+- 引脚需求已固化到 `docs/PCB_REQUIREMENTS.md`：**SD 卡不可用**——板载 TF 槽实接 SDMMC 39/40/41/42，其中 39/40 未引出、41/42 与眼屏 DC/SCK 冲突；此前"SD 与摄像头共用 8/9"系固件 XIAO 旧预设误判，实际 DVP 与 SD 无冲突。`CAM_SD_ENABLED` 保持禁用。
+- 眼屏引脚保持 **2/0/41/42/45/46**（模块唯一可用 IO，第三方选型即此）；背板设计见 `hardware/主板设计说明.md` §5。
+- 剩余待实机验证：`/stream` 推流、`/capture` 拍照、`/eyes` 表情。
 
 ### Step 5：眼睛屏（屏在 CAM 模组上；CAM 侧驱动已实现，待实机验证）
 
@@ -72,17 +71,17 @@
 | 信号 | 左屏 | 右屏 | 说明 |
 |---|---|---|---|
 | RST | GPIO46 | GPIO46 | 共享复位 |
-| L/R（片选，厂商丝印） | GPIO2 | GPIO0 | 每屏独立，等效 CS，固件验证 |
+| L/R（片选，厂商丝印） | GPIO2 | GPIO0 | 每屏独立，等效 CS；模块仅引出此两脚，无法更换（CS 空闲高，实机验证正常）|
 | DC | GPIO41 | GPIO41 | 共享 |
 | SDA（MOSI） | GPIO45 | GPIO45 | 共享 |
 | SCL | GPIO42 | GPIO42 | 共享 |
 | VDD / GND | 3V3 / GND | 3V3 / GND | |
 
-注意：GPIO0/45/46 为 strapping 引脚（GPIO0=启动模式、GPIO45=VDD_SPI 电压、GPIO46=ROM 日志），上电瞬间电平需兼容（CS 空闲高、SCL 空闲低一般无碍，实机验证）；与摄像头（推测 4–13/15–18）、UART（21/14）无冲突。
+注意：GPIO0/45/46 为 strapping 引脚（GPIO0=启动模式、GPIO45=VDD_SPI 电压、GPIO46=ROM 日志），上电瞬间电平需兼容（CS 空闲高、SCL 空闲低一般无碍，实机验证）。
 
 - 主控侧 `EYE_DISPLAY_ENABLED=0` 是**终态**；`config.h` 的 `DISPLAY_SPI_*` 占位值（旧接线，与新硬件冲突）不再等待更新。
-- ✅ **CAM 侧驱动已实现（2026-07-31，待实机验证）**：`wall-e_esp32_cam/eye_display.h`——两块圆屏共享 SPI（SCK=42/MOSI=45/DC=41/RST=46，用 HSPI/SPI3 主机避开 SD 的 FSPI），片选 L=2/R=0，按 **GC9A01 假设**驱动（若黑屏换 ST7789 或查厂商资料）；矢量眼睛绘制复用 archive 固件（lens/iris/pupil/highlight + 2.5–6s 随机眨眼）；新增 HTTP 端点 **`/eyes?expr=neutral|sad|left|right`**（词汇与主控 `self.walle.eyes` 一致）；UART 表情指令随 Step 4 一并接入。
-- 已知冲突：`SD_CS_PIN=2` 与左眼 CS 撞脚（SD 引脚本就待核对，见 Step 4.5；若 SD 初始化干扰眼屏，先设 `CAM_SD_ENABLED=0`）。
+- ✅ **CAM 侧驱动已实现（2026-07-31 初版，2026-08 随板型确认更新）**：`wall-e_esp32_cam/cam_main.cpp`——两块圆屏共享 SPI（SCK=42/MOSI=45/DC=41/RST=46），片选 L=**2**/R=**0**，按 **GC9A01 假设**驱动（若黑屏换 ST7789 或查厂商资料）；矢量眼睛绘制复用 archive 固件（lens/iris/pupil/highlight + 2.5–6s 随机眨眼）；新增 HTTP 端点 **`/eyes?expr=neutral|sad|left|right`**（词汇与主控 `self.walle.eyes` 一致）；UART 表情指令随 Step 4 一并接入。
+- SD 卡不可用（模块未引出 SD 引脚，见 Step 4.5），`CAM_SD_ENABLED` 保持禁用。
 - 实机验证清单：烧录后双眼显示 neutral 表情并周期眨眼；`/eyes?expr=sad|left|right` 切换正确；GC9A01 假设不成立时更换驱动 IC 实现。
 - 连带影响：`walle_cam_viewer.cc` 的照片预览/AVI 回放在主控侧无显示出口（NoDisplay），功能空转；待 CAM 侧显示方案明确后决定去留（可由 CAM 屏显示，或 Web 面板查看）。
 
