@@ -73,7 +73,10 @@ walle-replica/
 │   ├── 主板设计说明.md           # 方案 A 双层堆叠主板 + 摄像头背板 + 副板：连接器逐脚定义/电源树/布局
 │   ├── 主板布局示意图.html        # 等比例布局示意图（主板顶/底两面 + 摄像头背板 + 副板）
 │   ├── 另一套硬件-{主板,副板,摄像头背板}.png  # 第三方套件参考实物照片
-│   └── walle-shield/             # 旧 Arduino UNO 模块化底板（KiCad 10，140×100）
+│   ├── walle-mainboard/          # ★ 新硬件主板 KiCad 10 工程（方案 A 模块插接底板，板框 80×63mm）：
+│   │                             #   原理图已分区重排定稿（netlist 逐脚核对 PASS、0 重叠 0 交叉，generate_schematic.py 可重新生成/校验）；
+│   │                             #   PCB：拥塞感知路由器 46 网布通 38，剩 8 条（FFC 西走廊过饱和，需手工布）；DRC 0.15 netclass 待修
+│   └── （walle-shield/ 旧 Arduino UNO 底板已于 2026-08 从磁盘删除，未曾提交 git）
 ├── models/                      # 空目录；设计文档提到的 TFLite 模型尚未提交
 ├── images/                      # 接线图、电路图
 ├── README.md / README.zh-CN.md
